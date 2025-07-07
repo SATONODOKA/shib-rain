@@ -8,6 +8,8 @@ interface Message {
   content: string
   timestamp: Date
   knowledgeCards?: KnowledgeCard[]
+  step?: number
+  stepType?: 'initial' | 'deep-dive' | 'proposal'
 }
 
 interface KnowledgeCard {
@@ -36,6 +38,8 @@ export default function Home() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const [isEditingChatName, setIsEditingChatName] = useState<string | null>(null)
   const [editingChatName, setEditingChatName] = useState('')
+  const [currentStep, setCurrentStep] = useState(1)
+  const [currentStepType, setCurrentStepType] = useState<'initial' | 'deep-dive' | 'proposal'>('initial')
 
   const mockKnowledgeCards: KnowledgeCard[] = [
     {
@@ -123,6 +127,8 @@ export default function Home() {
     setChatHistory(newHistory)
     setCurrentChatId(newChat.id)
     setMessages([])
+    setCurrentStep(1)
+    setCurrentStepType('initial')
     saveToLocalStorage(newHistory)
   }
 
@@ -156,6 +162,17 @@ export default function Home() {
     if (selectedChat) {
       setCurrentChatId(chatId)
       setMessages(selectedChat.messages)
+      // 最新メッセージからステップ情報を復元
+      const lastAssistantMessage = selectedChat.messages
+        .filter(msg => msg.type === 'assistant')
+        .pop()
+      if (lastAssistantMessage && lastAssistantMessage.step) {
+        setCurrentStep(lastAssistantMessage.step + 1)
+        setCurrentStepType(lastAssistantMessage.stepType || 'initial')
+      } else {
+        setCurrentStep(1)
+        setCurrentStepType('initial')
+      }
     }
   }
 
@@ -213,20 +230,59 @@ export default function Home() {
     setIsLoading(true)
     updateCurrentChat(newMessages)
 
-    // AI応答をシミュレート
-    setTimeout(() => {
+    try {
+      // Chat APIに送信
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: newMessages.map(msg => ({
+          role: msg.type === 'user' ? 'user' : 'assistant',
+          content: msg.content
+        })) })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Chat API error: ${response.status}`)
+      }
+
+      const data = await response.json()
+      
+      if (!data.success) {
+        throw new Error(data.error || 'APIエラーが発生しました')
+      }
+
       const assistantMessage: Message = {
         id: Date.now() + 1,
         type: 'assistant',
-        content: generateMockResponse(inputValue),
+        content: data.message,
         timestamp: new Date(),
-        knowledgeCards: mockKnowledgeCards
+        knowledgeCards: mockKnowledgeCards.filter(card => data.message.includes(card.title)),
+        step: currentStep,
+        stepType: currentStepType
+      }
+
+      const finalMessages = [...newMessages, assistantMessage]
+      setMessages(finalMessages)
+      updateCurrentChat(finalMessages)
+      setCurrentStep(currentStep + 1)
+      setCurrentStepType(currentStepType === 'initial' ? 'deep-dive' : 'proposal')
+      setIsLoading(false)
+    } catch (error) {
+      console.error('Chat API呼び出しエラー:', error)
+      // エラー時はフォールバック応答
+      const assistantMessage: Message = {
+        id: Date.now() + 1,
+        type: 'assistant',
+        content: '申し訳ございません。チャットの処理中にエラーが発生しました。もう一度お試しください。',
+        timestamp: new Date(),
+        step: currentStep,
+        stepType: currentStepType
       }
       const finalMessages = [...newMessages, assistantMessage]
       setMessages(finalMessages)
       updateCurrentChat(finalMessages)
       setIsLoading(false)
-    }, 1500)
+    }
   }
 
   // テキストハイライト機能
@@ -244,25 +300,56 @@ export default function Home() {
     )
   }
 
-  const generateMockResponse = (query: string): string => {
-    return `「${query}」についてお答えします。
+  // 段階的対話のためのレスポンス生成関数
+  const generateStepBasedResponse = (userQuery: string, step: number, messageHistory: Message[]): string => {
+    switch (step) {
+      case 1:
+        // 初回質問：3つの基本質問のみ（ナレッジカードなし）
+        return `「${userQuery}」についてお聞かせください。
 
-関連するナレッジを検索した結果、以下の情報が見つかりました：
+より具体的で有用な提案をするために、以下の点について教えてください：
 
-1. **成功事例の分析**: 複数の企業で実践された効果的な取り組みが確認されています。特に、段階的な実装とステークホルダーの巻き込みが成功の鍵となっています。
+1. **どちらの業界・分野でしょうか？**
+   （例：建設業、IT、製造業、サービス業など）
 
-2. **実装のポイント**: 
-   - 現状分析と目標設定の明確化
-   - 関係者のコミットメント確保
-   - 段階的な導入とフィードバック収集
-   - 継続的な改善サイクルの確立
+2. **企業規模はどの程度ですか？**
+   （例：大手企業、中堅企業、中小企業、スタートアップなど）
 
-3. **注意すべき課題**: 
-   - 組織文化との整合性確保
-   - 変更管理の重要性
-   - 成果測定指標の設定
+3. **現在どのような課題を感じていますか？**
+   （例：人材不足、離職率、組織風土、評価制度など）
 
-詳細な情報は、下記のナレッジカードをご覧ください。具体的な実装方法や事例についてさらに詳しく知りたい場合は、お気軽にお聞かせください。`
+これらの情報をお聞かせいただければ、より的確なアドバイスができます。`
+
+      case 2:
+        // 2回目：業界情報に基づく深掘り質問
+        return `ありがとうございます。「${userQuery}」ですね。
+
+その業界でよくある課題について、もう少し詳しく教えてください：
+
+- 具体的にはどのような問題が一番深刻でしょうか？
+- 現在何か対策は取られていますか？
+- 解決の優先度はどの程度でしょうか？
+
+お聞かせいただければ、より具体的なアドバイスができます。`
+
+      case 3:
+        // 3回目：さらに詳しい情報収集
+        return `詳しい情報をありがとうございます。「${userQuery}」について理解が深まりました。
+
+最後に、以下についてお聞かせください：
+
+- 取り組み開始時期の目安はありますか？
+- 予算や人員の制約はありますか？
+- 成功の基準や目標はどのようなものでしょうか？
+
+これらの情報が揃いましたら、最適なナレッジとソリューションをご提案いたします。`
+
+      default:
+        // 4回目以降：基本的な確認
+        return `ありがとうございます。これまでの情報を整理して、最適なナレッジを検索いたします。
+
+少々お待ちください...`
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -414,13 +501,20 @@ export default function Home() {
                         : 'bg-white border border-gray-200'
                     }`}>
                       <div className="whitespace-pre-wrap">{message.content}</div>
-                      <div className={`text-xs mt-2 ${
+                      <div className={`text-xs mt-2 flex items-center justify-between ${
                         message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
                       }`}>
-                        {message.timestamp.toLocaleTimeString('ja-JP', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
+                        <span>
+                          {message.timestamp.toLocaleTimeString('ja-JP', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                        {message.step && message.type === 'assistant' && (
+                          <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-600">
+                            STEP {message.step}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
