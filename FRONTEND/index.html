@@ -443,6 +443,26 @@
       font-size: 11px;
       font-weight: bold;
     }
+
+    .result-actions {
+      margin-top: 12px;
+      text-align: right;
+    }
+
+    .open-file-btn {
+      background: #10a37f;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .open-file-btn:hover {
+      background: #0d8a6f;
+    }
   </style>
 </head>
 <body>
@@ -606,7 +626,7 @@
     // 検索結果を表示
     function displaySearchResults(results, query) {
       const resultsHtml = results.map(file => `
-        <div class="search-result-item" onclick="openKnowledgeFile('${file.path}')">
+        <div class="search-result-item">
           <div class="result-header">
             <span class="result-category">${file.category}</span>
             <span class="result-score">関連度: ${file.score}</span>
@@ -615,6 +635,11 @@
           <div class="result-description">${file.description}</div>
           <div class="result-keywords">
             ${file.keywords.map(keyword => `<span class="keyword-tag">${keyword}</span>`).join('')}
+          </div>
+          <div class="result-actions">
+            <button class="open-file-btn" onclick="openKnowledgeFile('${file.path}')">
+              📄 Obsidianで開く
+            </button>
           </div>
         </div>
       `).join('');
@@ -633,9 +658,15 @@
 
     // ナレッジファイルを開く
     function openKnowledgeFile(filePath) {
-      // 実際のファイル内容を読み込む処理（将来的に実装）
+      // Obsidianでファイルを直接開く
+      const obsidianUrl = `obsidian://open?vault=Obsidian%20Vault&file=${encodeURIComponent(filePath)}`;
+      
+      // 新しいウィンドウでObsidianを開く
+      window.open(obsidianUrl, '_blank');
+      
+      // ユーザーに通知
       const fileName = filePath.split('/').pop().replace('.md', '');
-      const message = `📄 **${fileName}** の詳細情報を表示します。\n\nこのファイルには、関連する業界知識や能力開発の情報が含まれています。詳細な内容や引用元については、Obsidianで直接ファイルを開いてご確認ください。`;
+      const message = `📄 **${fileName}** をObsidianで開きました。\n\nファイルが自動的にObsidianで開かれます。Obsidianが起動していない場合は、Obsidianを起動してから再度クリックしてください。`;
       
       addMessage(message, 'ai');
     }
