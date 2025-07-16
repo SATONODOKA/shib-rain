@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ナレッジチャット</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #ffffff;
+      color: #374151;
+      height: 100vh;
+      display: flex;
+    }
+
+    /* サイドバー */
+    .sidebar {
+      width: 260px;
+      background: #f7f7f8;
+      border-right: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .logo {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: 8px;
+      overflow-y: auto;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      margin: 2px 0;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      font-size: 14px;
+    }
+
+    .nav-item:hover {
+      background: #f3f4f6;
+    }
+
+    .nav-item.active {
+      background: #e5e7eb;
+    }
+
+    .nav-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 12px;
+      opacity: 0.7;
+    }
+
+    .nav-separator {
+      height: 1px;
+      background: #e5e7eb;
+      margin: 8px 0;
+    }
+
+    .chat-history {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .chat-history-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      margin: 2px 0;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      font-size: 13px;
+      color: #6b7280;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chat-history-item:hover {
+      background: #f3f4f6;
+    }
+
+    .chat-history-item.active {
+      background: #e5e7eb;
+      color: #111827;
+    }
+
+    .chat-history-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 12px;
+      opacity: 0.7;
+      flex-shrink: 0;
+    }
+
+    /* メインコンテンツ */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .chat-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .chat-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .user-profile {
+      width: 32px;
+      height: 32px;
+      background: #10a37f;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    /* チャットエリア */
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .welcome-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    .welcome-title {
+      font-size: 32px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 16px;
+    }
+
+    .welcome-subtitle {
+      font-size: 16px;
+      color: #6b7280;
+      margin-bottom: 40px;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: none;
+    }
+
+    .message {
+      display: flex;
+      margin-bottom: 24px;
+      animation: fadeIn 0.3s ease-in;
+    }
+
+    .message.user {
+      justify-content: flex-end;
+    }
+
+    .message-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: bold;
+      margin: 0 12px;
+      flex-shrink: 0;
+    }
+
+    .message.user .message-avatar {
+      background: #10a37f;
+      color: white;
+    }
+
+    .message.ai .message-avatar {
+      background: #8e8ea0;
+      color: white;
+    }
+
+    .message-content {
+      max-width: 70%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    .message.user .message-content {
+      background: #10a37f;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.ai .message-content {
+      background: #f7f7f8;
+      color: #374151;
+      border-bottom-left-radius: 4px;
+    }
+
+    /* 入力エリア */
+    .input-container {
+      padding: 20px;
+      border-top: 1px solid #e5e7eb;
+      background: white;
+    }
+
+    .input-wrapper {
+      max-width: 768px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .input-box {
+      width: 100%;
+      padding: 12px 48px 12px 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 24px;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.2s;
+      background: white;
+    }
+
+    .input-box:focus {
+      border-color: #10a37f;
+      box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
+    }
+
+    .input-actions {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .action-button {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      color: #6b7280;
+    }
+
+    .action-button:hover {
+      background: #f3f4f6;
+    }
+
+    .send-button {
+      background: #10a37f;
+      color: white;
+    }
+
+    .send-button:hover {
+      background: #0d8c6c;
+    }
+
+    /* アニメーション */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* レスポンシブ */
+    @media (max-width: 768px) {
+      .sidebar {
+        display: none;
+      }
+      
+      .message-content {
+        max-width: 85%;
+      }
+    }
+
+    /* スクロールバー */
+    .chat-messages::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .chat-messages::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb {
+      background: #d1d5db;
+      border-radius: 3px;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af;
+    }
+
+    /* 検索結果スタイル */
+    .search-results {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 15px;
+      margin-top: 10px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .search-results-header {
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+
+    .search-results-header h3 {
+      font-size: 14px;
+      color: #4b5563;
+      margin-bottom: 5px;
+    }
+
+    .search-results-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .search-result-item {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 10px 15px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .search-result-item:hover {
+      background: #f3f4f6;
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+
+    .result-category {
+      background: #e0e7ff;
+      color: #4f46e5;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+
+    .result-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 3px;
+    }
+
+    .result-description {
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 5px;
+      line-height: 1.4;
+    }
+
+    .result-keywords {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .keyword-tag {
+      background: #f3f4f6;
+      color: #4b5563;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <!-- サイドバー -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">N</div>
+    </div>
+    
+    <div class="sidebar-nav">
+      <div class="nav-item active" id="new-chat">
+        <span class="nav-icon">✏️</span>
+        新しいチャット
+      </div>
+      <div class="nav-item">
+        <span class="nav-icon">🔍</span>
+        チャットを検索
+      </div>
+      
+      <div class="nav-separator"></div>
+      
+      <div class="chat-history" id="chat-history">
+        <!-- チャット履歴がここに動的に追加されます -->
+      </div>
+    </div>
+  </div>
+
+  <!-- メインコンテンツ -->
+  <div class="main-content">
+    <div class="chat-header">
+      <div class="chat-title">ナレッジチャット</div>
+      <div class="user-profile">U</div>
+    </div>
+
+    <div class="chat-container">
+      <!-- ウェルカム画面 -->
+      <div class="welcome-screen" id="welcome-screen">
+        <h1 class="welcome-title">今日はどうしましたか？</h1>
+        <p class="welcome-subtitle">業界知識や能力開発について、何でもお聞かせください</p>
+      </div>
+
+      <!-- チャットメッセージ -->
+      <div class="chat-messages" id="chat-messages">
+        <!-- メッセージがここに動的に追加されます -->
+      </div>
+    </div>
+
+    <!-- 入力エリア -->
+    <div class="input-container">
+      <div class="input-wrapper">
+        <input 
+          type="text" 
+          class="input-box" 
+          id="user-input" 
+          placeholder="質問してみましょう"
+          autocomplete="off"
+        >
+        <div class="input-actions">
+          <button class="action-button" title="ツール">
+            <span>🔧</span>
+          </button>
+          <button class="action-button" title="音声入力">
+            <span>🎤</span>
+          </button>
+          <button class="action-button send-button" id="send-button" title="送信">
+            <span>➤</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const welcomeScreen = document.getElementById('welcome-screen');
+    const chatMessages = document.getElementById('chat-messages');
+    const userInput = document.getElementById('user-input');
+    const sendButton = document.getElementById('send-button');
+    const chatHistory = document.getElementById('chat-history');
+    const newChatButton = document.getElementById('new-chat');
+
+    let currentChatId = null;
+    let chatSessions = [];
+    let sessionCounter = 0;
+    let knowledgeFiles = []; // ナレッジファイルのリスト
+
+    // ナレッジファイルの構造
+    const knowledgeFileStructure = [
+      {
+        path: 'KNOWLEDGE/業界別/建設業界_業界一般.md',
+        title: '建設業界_業界一般',
+        category: '業界別',
+        keywords: ['建設業界', '業界一般', '建設', '現場', '工事'],
+        description: '建設業界の全体像、特徴、課題、動向をまとめたナレッジ'
+      },
+      {
+        path: 'KNOWLEDGE/業界別/建設業界_現場職人.md',
+        title: '建設業界_現場職人',
+        category: '業界別',
+        keywords: ['建設業界', '現場職人', '技能者', '大工', '左官', '現場'],
+        description: '建設業界の現場職人に関する特徴、課題、改善施策をまとめたナレッジ'
+      },
+      {
+        path: 'KNOWLEDGE/能力開発テーマ/組織風土改革_建設業界.md',
+        title: '組織風土改革_建設業界',
+        category: '能力開発テーマ',
+        keywords: ['組織風土改革', '建設業界', '組織文化', '風土改革'],
+        description: '組織風土改革テーマの建設業界向けナレッジ'
+      },
+      {
+        path: 'KNOWLEDGE/能力開発テーマ/女性活躍_建設業界.md',
+        title: '女性活躍_建設業界',
+        category: '能力開発テーマ',
+        keywords: ['女性活躍', '建設業界', '女性', 'ダイバーシティ', '女性管理職'],
+        description: '女性活躍テーマの建設業界向けナレッジ'
+      }
+    ];
+
+    // ナレッジファイルを検索
+    function searchKnowledgeFiles(query) {
+      const results = [];
+      const queryLower = query.toLowerCase();
+      
+      for (const file of knowledgeFileStructure) {
+        let score = 0;
+        
+        // タイトルでのマッチング
+        if (file.title.toLowerCase().includes(queryLower)) {
+          score += 10;
+        }
+        
+        // キーワードでのマッチング
+        for (const keyword of file.keywords) {
+          if (keyword.toLowerCase().includes(queryLower)) {
+            score += 5;
+          }
+        }
+        
+        // 説明でのマッチング
+        if (file.description.toLowerCase().includes(queryLower)) {
+          score += 3;
+        }
+        
+        // カテゴリでのマッチング
+        if (file.category.toLowerCase().includes(queryLower)) {
+          score += 2;
+        }
+        
+        if (score > 0) {
+          results.push({
+            ...file,
+            score: score
+          });
+        }
+      }
+      
+      // スコアでソート
+      results.sort((a, b) => b.score - a.score);
+      return results;
+    }
+
+    // 検索結果を表示
+    function displaySearchResults(results, query) {
+      const resultsHtml = results.map(file => `
+        <div class="search-result-item" onclick="openKnowledgeFile('${file.path}')">
+          <div class="result-header">
+            <span class="result-category">${file.category}</span>
+            <span class="result-score">関連度: ${file.score}</span>
+          </div>
+          <div class="result-title">${file.title}</div>
+          <div class="result-description">${file.description}</div>
+          <div class="result-keywords">
+            ${file.keywords.map(keyword => `<span class="keyword-tag">${keyword}</span>`).join('')}
+          </div>
+        </div>
+      `).join('');
+      
+      return `
+        <div class="search-results">
+          <div class="search-results-header">
+            <h3>「${query}」の検索結果 (${results.length}件)</h3>
+          </div>
+          <div class="search-results-list">
+            ${resultsHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    // ナレッジファイルを開く
+    function openKnowledgeFile(filePath) {
+      // 実際のファイル内容を読み込む処理（将来的に実装）
+      const fileName = filePath.split('/').pop().replace('.md', '');
+      const message = `📄 **${fileName}** の詳細情報を表示します。\n\nこのファイルには、関連する業界知識や能力開発の情報が含まれています。詳細な内容や引用元については、Obsidianで直接ファイルを開いてご確認ください。`;
+      
+      addMessage(message, 'ai');
+    }
+
+    // 新しいチャット開始
+    function startNewChat() {
+      // チャット履歴をクリア
+      chatMessages.innerHTML = '';
+      welcomeScreen.style.display = 'flex';
+      chatMessages.style.display = 'none';
+      
+      // アクティブ状態をリセット
+      document.querySelectorAll('.nav-item, .chat-history-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      newChatButton.classList.add('active');
+      
+      currentChatId = null;
+      userInput.focus();
+    }
+
+    // チャット履歴アイテムを追加
+    function addChatHistoryItem(title, chatId) {
+      const historyItem = document.createElement('div');
+      historyItem.className = 'chat-history-item';
+      historyItem.setAttribute('data-chat-id', chatId);
+      
+      historyItem.innerHTML = `
+        <span class="chat-history-icon">💬</span>
+        <span class="chat-history-title">${title}</span>
+      `;
+      
+      historyItem.addEventListener('click', () => {
+        loadChatSession(chatId);
+      });
+      
+      chatHistory.appendChild(historyItem);
+    }
+
+    // チャットセッションを読み込み
+    function loadChatSession(chatId) {
+      const session = chatSessions.find(s => s.id === chatId);
+      if (!session) return;
+      
+      // アクティブ状態を更新
+      document.querySelectorAll('.nav-item, .chat-history-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      document.querySelector(`[data-chat-id="${chatId}"]`).classList.add('active');
+      
+      // チャットメッセージを表示
+      chatMessages.innerHTML = '';
+      session.messages.forEach(msg => {
+        addMessageToDisplay(msg.content, msg.sender);
+      });
+      
+      welcomeScreen.style.display = 'none';
+      chatMessages.style.display = 'block';
+      currentChatId = chatId;
+    }
+
+    // メッセージ送信処理
+    function sendMessage() {
+      const message = userInput.value.trim();
+      if (!message) return;
+
+      // 新しいチャットの場合、セッションを作成
+      if (!currentChatId) {
+        sessionCounter++;
+        currentChatId = `chat_${sessionCounter}`;
+        
+        // チャットタイトルを生成（最初のメッセージから）
+        const title = message.length > 20 ? message.substring(0, 20) + '...' : message;
+        addChatHistoryItem(title, currentChatId);
+        
+        chatSessions.push({
+          id: currentChatId,
+          title: title,
+          messages: []
+        });
+      }
+
+      // ウェルカム画面を非表示
+      welcomeScreen.style.display = 'none';
+      chatMessages.style.display = 'block';
+
+      // ユーザーメッセージを追加
+      addMessage(message, 'user');
+      
+      // 入力フィールドをクリア
+      userInput.value = '';
+
+      // AI応答を生成（検索機能付き）
+      setTimeout(() => {
+        const response = generateResponse(message);
+        addMessage(response, 'ai');
+      }, 1000);
+    }
+
+    // メッセージ追加
+    function addMessage(content, sender) {
+      // 現在のセッションにメッセージを保存
+      if (currentChatId) {
+        const session = chatSessions.find(s => s.id === currentChatId);
+        if (session) {
+          session.messages.push({ content, sender });
+        }
+      }
+      
+      addMessageToDisplay(content, sender);
+    }
+
+    // メッセージを表示に追加
+    function addMessageToDisplay(content, sender) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${sender}`;
+      
+      const avatar = document.createElement('div');
+      avatar.className = 'message-avatar';
+      avatar.textContent = sender === 'user' ? 'U' : 'AI';
+      
+      const messageContent = document.createElement('div');
+      messageContent.className = 'message-content';
+      
+      // HTMLコンテンツを許可
+      messageContent.innerHTML = content;
+      
+      messageDiv.appendChild(avatar);
+      messageDiv.appendChild(messageContent);
+      
+      chatMessages.appendChild(messageDiv);
+      
+      // スクロールを最下部に
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // 検索機能付き応答生成
+    function generateResponse(userMessage) {
+      // ナレッジファイルを検索
+      const searchResults = searchKnowledgeFiles(userMessage);
+      
+      if (searchResults.length > 0) {
+        // 検索結果がある場合
+        const topResult = searchResults[0];
+        let response = `🔍 **検索結果**\n\n`;
+        
+        if (searchResults.length === 1) {
+          response += `「${userMessage}」に関連するナレッジファイルが見つかりました：\n\n`;
+        } else {
+          response += `「${userMessage}」に関連するナレッジファイルが${searchResults.length}件見つかりました：\n\n`;
+        }
+        
+        response += displaySearchResults(searchResults, userMessage);
+        
+        return response;
+      } else {
+        // 検索結果がない場合のデフォルト応答
+        return `申し訳ございませんが、「${userMessage}」に関連する具体的な情報が見つかりませんでした。\n\n以下のようなキーワードでお試しください：\n• 建設業界\n• 女性活躍\n• 組織風土改革\n• 現場職人\n• 働き方改革\n• 新卒採用\n• 管理職育成`;
+      }
+    }
+
+    // イベントリスナー
+    sendButton.addEventListener('click', sendMessage);
+    userInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
+    });
+
+    // 新しいチャットボタンのイベント
+    newChatButton.addEventListener('click', startNewChat);
+
+    // 入力フィールドのフォーカス
+    userInput.focus();
+  </script>
+</body>
+</html> 
