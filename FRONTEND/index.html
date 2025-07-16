@@ -728,9 +728,9 @@
       // 入力フィールドをクリア
       userInput.value = '';
 
-      // AI応答を生成（検索機能付き）
-      setTimeout(() => {
-        const response = generateResponse(message);
+      // AI応答を生成（API連携）
+      setTimeout(async () => {
+        const response = await generateResponse(message);
         addMessage(response, 'ai');
       }, 1000);
     }
@@ -772,28 +772,56 @@
       chatMessages.scrollTop = chatMessages.scrollHeight;
     }
 
-    // 検索機能付き応答生成
-    function generateResponse(userMessage) {
-      // ナレッジファイルを検索
-      const searchResults = searchKnowledgeFiles(userMessage);
-      
-      if (searchResults.length > 0) {
-        // 検索結果がある場合
-        const topResult = searchResults[0];
-        let response = `🔍 **検索結果**\n\n`;
+    // APIとの通信
+    async function callChatAPI(message) {
+      try {
+        const response = await fetch('http://localhost:8000/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: message,
+            chat_id: currentChatId
+          })
+        });
         
-        if (searchResults.length === 1) {
-          response += `「${userMessage}」に関連するナレッジファイルが見つかりました：\n\n`;
-        } else {
-          response += `「${userMessage}」に関連するナレッジファイルが${searchResults.length}件見つかりました：\n\n`;
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        response += displaySearchResults(searchResults, userMessage);
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.error('API通信エラー:', error);
+        return null;
+      }
+    }
+
+    // 検索機能付き応答生成
+    async function generateResponse(userMessage) {
+      try {
+        // APIを呼び出し
+        const apiResponse = await callChatAPI(userMessage);
         
-        return response;
-      } else {
-        // 検索結果がない場合のデフォルト応答
-        return `申し訳ございませんが、「${userMessage}」に関連する具体的な情報が見つかりませんでした。\n\n以下のようなキーワードでお試しください：\n• 建設業界\n• 女性活躍\n• 組織風土改革\n• 現場職人\n• 働き方改革\n• 新卒採用\n• 管理職育成`;
+        if (apiResponse && apiResponse.response) {
+          // APIからの応答を表示
+          let response = apiResponse.response;
+          
+          // 関連ナレッジファイルがある場合は追加表示
+          if (apiResponse.knowledge_files && apiResponse.knowledge_files.length > 0) {
+            response += `\n\n📚 **関連ナレッジファイル**\n\n`;
+            response += displaySearchResults(apiResponse.knowledge_files, userMessage);
+          }
+          
+          return response;
+        } else {
+          // APIが失敗した場合のフォールバック
+          return `申し訳ございませんが、現在システムに接続できません。\n\n以下のようなキーワードでお試しください：\n• 建設業界\n• 女性活躍\n• 組織風土改革\n• 現場職人\n• 働き方改革\n• 新卒採用\n• 管理職育成`;
+        }
+      } catch (error) {
+        console.error('応答生成エラー:', error);
+        return `エラーが発生しました: ${error.message}`;
       }
     }
 
