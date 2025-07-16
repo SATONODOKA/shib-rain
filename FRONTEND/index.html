@@ -249,6 +249,55 @@
       border-bottom-left-radius: 4px;
     }
 
+    .message-content h3 {
+      margin: 16px 0 8px 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .message-content h4 {
+      margin: 12px 0 6px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .message-content ul {
+      margin: 8px 0;
+      padding-left: 20px;
+    }
+
+    .message-content li {
+      margin: 4px 0;
+    }
+
+    .message-content pre {
+      background: #f3f4f6;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin: 8px 0;
+      overflow-x: auto;
+    }
+
+    .message-content code {
+      background: #f3f4f6;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 12px;
+    }
+
+    .message-content strong {
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .message-content em {
+      font-style: italic;
+      color: #6b7280;
+    }
+
     /* 入力エリア */
     .input-container {
       padding: 20px;
@@ -713,12 +762,6 @@
       
       // 新しいウィンドウでObsidianを開く
       window.open(obsidianUrl, '_blank');
-      
-      // ユーザーに通知
-      const fileName = filePath.split('/').pop().replace('.md', '');
-      const message = `📄 **${fileName}** をObsidianで開きました。\n\nファイルが自動的にObsidianで開かれます。Obsidianが起動していない場合は、Obsidianを起動してから再度クリックしてください。`;
-      
-      addMessage(message, 'ai');
     }
 
     // 新しいチャット開始
@@ -851,8 +894,9 @@
       const messageContent = document.createElement('div');
       messageContent.className = 'message-content';
       
-      // HTMLコンテンツを許可
-      messageContent.innerHTML = content;
+      // 改行とMarkdown形式の処理
+      const processedContent = processMessageContent(content);
+      messageContent.innerHTML = processedContent;
       
       messageDiv.appendChild(avatar);
       messageDiv.appendChild(messageContent);
@@ -861,6 +905,34 @@
       
       // スクロールを最下部に
       chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // メッセージ内容の処理（改行、太字、リスト等）
+    function processMessageContent(content) {
+      // 改行を<br>に変換
+      let processed = content.replace(/\n/g, '<br>');
+      
+      // 太字の処理 (**text** → <strong>text</strong>)
+      processed = processed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      
+      // 斜体の処理 (*text* → <em>text</em>)
+      processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>');
+      
+      // リストの処理
+      processed = processed.replace(/^•\s+(.*?)(?=<br>|$)/gm, '<li>$1</li>');
+      processed = processed.replace(/(<li>.*?<\/li>)/s, '<ul>$1</ul>');
+      
+      // 見出しの処理
+      processed = processed.replace(/^#\s+(.*?)(?=<br>|$)/gm, '<h3>$1</h3>');
+      processed = processed.replace(/^##\s+(.*?)(?=<br>|$)/gm, '<h4>$1</h4>');
+      
+      // コードブロックの処理
+      processed = processed.replace(/```(.*?)```/gs, '<pre><code>$1</code></pre>');
+      
+      // インラインコードの処理
+      processed = processed.replace(/`(.*?)`/g, '<code>$1</code>');
+      
+      return processed;
     }
 
     // APIとの通信
@@ -981,7 +1053,7 @@
           // タイトルにハイライトを追加
           const titleElement = item.querySelector('.chat-history-title');
           if (query && title.toLowerCase().includes(queryLower)) {
-            const regex = new RegExp(`(${query})`, 'gi');
+            const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi');
             titleElement.innerHTML = title.replace(regex, '<span class="highlight-text">$1</span>');
           }
         } else {
@@ -989,6 +1061,11 @@
           item.classList.remove('highlight');
         }
       });
+    }
+
+    // 正規表現のエスケープ
+    function escapeRegExp(string) {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     // 検索ボックスの表示/非表示切り替え
