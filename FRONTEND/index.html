@@ -463,6 +463,38 @@
     .open-file-btn:hover {
       background: #0d8a6f;
     }
+
+    .search-container {
+      padding: 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: #10a37f;
+      box-shadow: 0 0 0 2px rgba(16, 163, 127, 0.1);
+    }
+
+    .chat-history-item.highlight {
+      background: #fef3c7;
+      border-left: 3px solid #f59e0b;
+    }
+
+    .chat-history-item .highlight-text {
+      background: #fef3c7;
+      color: #92400e;
+      padding: 1px 2px;
+      border-radius: 2px;
+    }
   </style>
 </head>
 <body>
@@ -477,9 +509,20 @@
         <span class="nav-icon">✏️</span>
         新しいチャット
       </div>
-      <div class="nav-item">
+      <div class="nav-item" id="search-toggle">
         <span class="nav-icon">🔍</span>
         チャットを検索
+      </div>
+      
+      <!-- 検索ボックス -->
+      <div class="search-container" id="search-container" style="display: none;">
+        <input 
+          type="text" 
+          class="search-input" 
+          id="chat-search-input" 
+          placeholder="チャット履歴を検索..."
+          autocomplete="off"
+        >
       </div>
       
       <div class="nav-separator"></div>
@@ -547,6 +590,13 @@
     let chatSessions = [];
     let sessionCounter = 0;
     let knowledgeFiles = []; // ナレッジファイルのリスト
+    let searchToggle = document.getElementById('search-toggle');
+    let searchContainer = document.getElementById('search-container');
+    let chatSearchInput = document.getElementById('chat-search-input');
+
+    // ローカルストレージの設定
+    const STORAGE_KEY = 'shibu_rain_chat_history';
+    const MAX_SESSIONS = 50; // 最大保存セッション数
 
     // ナレッジファイルの構造
     const knowledgeFileStructure = [
@@ -685,6 +735,11 @@
       newChatButton.classList.add('active');
       
       currentChatId = null;
+      
+      // 検索ボックスを非表示
+      searchContainer.style.display = 'none';
+      chatSearchInput.value = '';
+      
       userInput.focus();
     }
 
@@ -704,6 +759,9 @@
       });
       
       chatHistory.appendChild(historyItem);
+      
+      // チャット履歴を保存
+      saveChatHistory();
     }
 
     // チャットセッションを読み込み
@@ -773,6 +831,8 @@
         const session = chatSessions.find(s => s.id === currentChatId);
         if (session) {
           session.messages.push({ content, sender });
+          // チャット履歴を保存
+          saveChatHistory();
         }
       }
       
@@ -856,6 +916,100 @@
       }
     }
 
+    // ローカルストレージからチャット履歴を読み込み
+    function loadChatHistory() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const data = JSON.parse(saved);
+          chatSessions = data.sessions || [];
+          sessionCounter = data.counter || 0;
+          
+          // チャット履歴を表示
+          chatSessions.forEach(session => {
+            addChatHistoryItem(session.title, session.id);
+          });
+        }
+      } catch (error) {
+        console.error('チャット履歴の読み込みエラー:', error);
+      }
+    }
+
+    // ローカルストレージにチャット履歴を保存
+    function saveChatHistory() {
+      try {
+        // 最大セッション数を超えた場合、古いものを削除
+        if (chatSessions.length > MAX_SESSIONS) {
+          chatSessions = chatSessions.slice(-MAX_SESSIONS);
+        }
+        
+        const data = {
+          sessions: chatSessions,
+          counter: sessionCounter,
+          lastSaved: new Date().toISOString()
+        };
+        
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (error) {
+        console.error('チャット履歴の保存エラー:', error);
+      }
+    }
+
+    // 検索機能
+    function searchChatHistory(query) {
+      const queryLower = query.toLowerCase();
+      const historyItems = document.querySelectorAll('.chat-history-item');
+      
+      historyItems.forEach(item => {
+        const title = item.querySelector('.chat-history-title').textContent;
+        const chatId = item.getAttribute('data-chat-id');
+        const session = chatSessions.find(s => s.id === chatId);
+        
+        let hasMatch = title.toLowerCase().includes(queryLower);
+        
+        // メッセージ内容も検索
+        if (session && session.messages) {
+          hasMatch = hasMatch || session.messages.some(msg => 
+            msg.content.toLowerCase().includes(queryLower)
+          );
+        }
+        
+        if (hasMatch) {
+          item.style.display = 'flex';
+          item.classList.add('highlight');
+          
+          // タイトルにハイライトを追加
+          const titleElement = item.querySelector('.chat-history-title');
+          if (query && title.toLowerCase().includes(queryLower)) {
+            const regex = new RegExp(`(${query})`, 'gi');
+            titleElement.innerHTML = title.replace(regex, '<span class="highlight-text">$1</span>');
+          }
+        } else {
+          item.style.display = 'none';
+          item.classList.remove('highlight');
+        }
+      });
+    }
+
+    // 検索ボックスの表示/非表示切り替え
+    function toggleSearch() {
+      const isVisible = searchContainer.style.display !== 'none';
+      searchContainer.style.display = isVisible ? 'none' : 'block';
+      
+      if (!isVisible) {
+        chatSearchInput.focus();
+      } else {
+        chatSearchInput.value = '';
+        // 検索結果をクリア
+        document.querySelectorAll('.chat-history-item').forEach(item => {
+          item.style.display = 'flex';
+          item.classList.remove('highlight');
+          const titleElement = item.querySelector('.chat-history-title');
+          titleElement.innerHTML = titleElement.textContent;
+        });
+      }
+    }
+
     // イベントリスナー
     sendButton.addEventListener('click', sendMessage);
     userInput.addEventListener('keypress', (e) => {
@@ -866,6 +1020,15 @@
 
     // 新しいチャットボタンのイベント
     newChatButton.addEventListener('click', startNewChat);
+
+    // 検索関連のイベント
+    searchToggle.addEventListener('click', toggleSearch);
+    chatSearchInput.addEventListener('input', (e) => {
+      searchChatHistory(e.target.value);
+    });
+
+    // チャット履歴を読み込み
+    loadChatHistory();
 
     // 入力フィールドのフォーカス
     userInput.focus();
