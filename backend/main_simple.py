@@ -38,6 +38,7 @@ class IntentQuestion(BaseModel):
     question: str
     question_number: int
     max_questions: int
+    is_complete: bool = False
 
 class IntentClarificationResponse(BaseModel):
     question: IntentQuestion
@@ -200,10 +201,54 @@ class IntentClarificationService:
         ambiguous_words = ["知りたい", "教えて", "について", "どう", "何か"]
         return any(word in user_input for word in ambiguous_words)
     
+    def has_sufficient_information(self, user_input: str, answers: List[str]) -> bool:
+        """十分な情報が得られたかを判定"""
+        if not answers:
+            return False
+        
+        # 回答の長さと内容をチェック
+        total_length = sum(len(answer) for answer in answers)
+        if total_length < 10:  # 合計10文字未満は不十分
+            return False
+        
+        # 具体的なキーワードが含まれているかをチェック
+        specific_keywords = [
+            "建設業界", "パワハラ", "研修", "事例", "対策", "防止", "管理職", 
+            "現場", "職人", "女性", "育成", "組織", "風土", "改革", "採用",
+            "新卒", "働き方", "人材", "技能", "コミュニケーション", "安全"
+        ]
+        
+        combined_text = f"{user_input} {' '.join(answers)}"
+        found_keywords = [kw for kw in specific_keywords if kw in combined_text]
+        
+        # 2つ以上の具体的なキーワードがあれば十分
+        if len(found_keywords) >= 2:
+            return True
+        
+        # 回答が具体的で詳細な場合
+        detailed_indicators = ["具体的", "詳細", "実例", "実際", "具体的な", "具体的に"]
+        if any(indicator in combined_text for indicator in detailed_indicators):
+            return True
+        
+        # 回答の長さが十分で、具体的な内容が含まれている場合
+        if total_length >= 30 and any(len(answer) >= 15 for answer in answers):
+            return True
+        
+        return False
+    
     def generate_question(self, user_input: str, question_number: int, answers: List[str] = None) -> IntentQuestion:
         """LLMを使用して文脈を考慮した質問を生成"""
         if answers is None:
             answers = []
+        
+        # 十分な情報が得られた場合は早期完了を示す
+        if self.has_sufficient_information(user_input, answers):
+            return IntentQuestion(
+                question="十分な情報が得られました。回答を生成します。",
+                question_number=question_number,
+                max_questions=3,
+                is_complete=True
+            )
         
         if self.llm_service.is_available:
             return self._generate_question_with_llm(user_input, question_number, answers)
@@ -459,9 +504,9 @@ class IntentClarificationService:
         results.sort(key=lambda x: x["score"], reverse=True)
         return results[:5]  # 上位5件を返す
 
-# サービスインスタンス
-knowledge_manager = KnowledgeManager()
-intent_clarification_service = IntentClarificationService(knowledge_manager)
+# グローバル変数としてサービスを定義
+knowledge_manager = None
+intent_clarification_service = None
 
 # APIエンドポイント
 @app.get("/")
@@ -668,6 +713,31 @@ async def complete_intent_clarification(request: IntentCompleteRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/intent/complete-with-response", response_model=ChatResponse)
+async def complete_intent_with_response(request: IntentCompleteRequest):
+    """意図特定を完了して直接回答を生成"""
+    try:
+        # 意図を特定
+        intent_result = intent_clarification_service.identify_intent(request.user_input, request.answers)
+        
+        # 特定されたキーワードを使ってナレッジを検索
+        combined_query = f"{request.user_input} {' '.join(request.answers)} {' '.join(intent_result.keywords)}"
+        knowledge_files = intent_clarification_service._search_knowledge(combined_query)
+        
+        # 回答を生成
+        if knowledge_files:
+            response = await _generate_chat_response_with_llm(combined_query, knowledge_files)
+        else:
+            response = _generate_chat_response_fallback(combined_query, knowledge_files)
+        
+        return ChatResponse(
+            response=response,
+            knowledge_files=knowledge_files,
+            chat_id=request.user_input[:10]  # 簡易的なchat_id
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/knowledge/search-by-intent")
 async def search_knowledge_by_intent(intent_result: IntentResult):
     """意図に基づいてナレッジを検索"""
@@ -680,6 +750,10 @@ async def search_knowledge_by_intent(intent_result: IntentResult):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# グローバル変数としてサービスを定義
+knowledge_manager = KnowledgeManager()
+intent_clarification_service = IntentClarificationService(knowledge_manager)
 
 if __name__ == "__main__":
     import uvicorn

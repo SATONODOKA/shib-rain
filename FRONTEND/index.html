@@ -1125,6 +1125,13 @@
         });
         
         if (response && response.question) {
+          // 早期完了の判定
+          if (response.question.is_complete) {
+            // 十分な情報が得られたので直接回答を生成
+            await completeIntentClarificationWithResponse();
+            return;
+          }
+          
           intentClarificationState.currentQuestion = nextQuestionNumber;
           displayIntentQuestion(response.question);
         }
@@ -1157,6 +1164,29 @@
           
           addMessage(resultMessage, 'ai');
         }
+        
+        // 意図特定モードを終了
+        intentClarificationState.isActive = false;
+        userInput.placeholder = "質問してみましょう"; // プレースホルダーを元に戻す
+      }
+    }
+
+    // 早期完了時に直接回答を生成
+    async function completeIntentClarificationWithResponse() {
+      const response = await callIntentAPI('/intent/complete-with-response', {
+        user_input: intentClarificationState.originalInput,
+        answers: intentClarificationState.answerHistory
+      });
+      
+      if (response) {
+        let resultMessage = `理解しました！\n\n`;
+        resultMessage += response.response + '\n\n';
+        
+        if (response.knowledge_files && response.knowledge_files.length > 0) {
+          resultMessage += displaySearchResults(response.knowledge_files, intentClarificationState.originalInput);
+        }
+        
+        addMessage(resultMessage, 'ai');
         
         // 意図特定モードを終了
         intentClarificationState.isActive = false;
