@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ナレッジチャット</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #ffffff;
+      color: #374151;
+      height: 100vh;
+      display: flex;
+    }
+
+    /* サイドバー */
+    .sidebar {
+      width: 260px;
+      background: #f7f7f8;
+      border-right: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .logo {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: 8px;
+      overflow-y: auto;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      margin: 2px 0;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      font-size: 14px;
+    }
+
+    .nav-item:hover {
+      background: #f3f4f6;
+    }
+
+    .nav-item.active {
+      background: #e5e7eb;
+    }
+
+    .nav-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 12px;
+      opacity: 0.7;
+    }
+
+    .nav-separator {
+      height: 1px;
+      background: #e5e7eb;
+      margin: 8px 0;
+    }
+
+    .chat-history {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .chat-history-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      margin: 2px 0;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      font-size: 13px;
+      color: #6b7280;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chat-history-item:hover {
+      background: #f3f4f6;
+    }
+
+    .chat-history-item.active {
+      background: #e5e7eb;
+      color: #111827;
+    }
+
+    .chat-history-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 12px;
+      opacity: 0.7;
+      flex-shrink: 0;
+    }
+
+    /* メインコンテンツ */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    .chat-header {
+      padding: 8px 12px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .chat-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .user-profile {
+      width: 32px;
+      height: 32px;
+      background: #10a37f;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    /* チャットエリア */
+    .chat-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .welcome-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 32px 16px;
+    }
+
+    .welcome-title {
+      font-size: 28px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 12px;
+    }
+
+    .welcome-subtitle {
+      font-size: 15px;
+      color: #6b7280;
+      margin-bottom: 32px;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      display: none;
+    }
+
+    .message {
+      display: flex;
+      margin-bottom: 8px;
+      animation: fadeIn 0.3s ease-in;
+    }
+
+    .message.user {
+      justify-content: flex-end;
+    }
+
+    .message-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: bold;
+      margin: 0 6px;
+      flex-shrink: 0;
+    }
+
+    .message.user .message-avatar {
+      background: #10a37f;
+      color: white;
+    }
+
+    .message.ai .message-avatar {
+      background: #8e8ea0;
+      color: white;
+    }
+
+    .message-content {
+      max-width: 70%;
+      padding: 8px 12px;
+      border-radius: 10px;
+      line-height: 1.4;
+      font-size: 14px;
+    }
+
+    .message.user .message-content {
+      background: #10a37f;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.ai .message-content {
+      background: #f7f7f8;
+      color: #374151;
+      border-bottom-left-radius: 4px;
+    }
+
+    .message-content h3 {
+      margin: 12px 0 6px 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .message-content h4 {
+      margin: 10px 0 4px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: #374151;
+    }
+
+    .message-content ul {
+      margin: 8px 0;
+      padding-left: 20px;
+    }
+
+    .message-content li {
+      margin: 4px 0;
+    }
+
+    .message-content pre {
+      background: #f3f4f6;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin: 8px 0;
+      overflow-x: auto;
+    }
+
+    .message-content code {
+      background: #f3f4f6;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 12px;
+    }
+
+    .message-content strong {
+      font-weight: 600;
+      color: #111827;
+    }
+
+    .message-content em {
+      font-style: italic;
+      color: #6b7280;
+    }
+
+    /* 入力エリア */
+    .input-container {
+      padding: 8px;
+      border-top: 1px solid #e5e7eb;
+      background: white;
+    }
+
+    .input-wrapper {
+      max-width: 768px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    .input-box {
+      width: 100%;
+      padding: 12px 48px 12px 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 24px;
+      font-size: 16px;
+      outline: none;
+      transition: border-color 0.2s;
+      background: white;
+    }
+
+    .input-box:focus {
+      border-color: #10a37f;
+      box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
+    }
+
+    .input-actions {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .action-button {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      color: #6b7280;
+    }
+
+    .action-button:hover {
+      background: #f3f4f6;
+    }
+
+    .send-button {
+      background: #10a37f;
+      color: white;
+    }
+
+    .send-button:hover {
+      background: #0d8c6c;
+    }
+
+    /* アニメーション */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* レスポンシブ */
+    @media (max-width: 768px) {
+      .sidebar {
+        display: none;
+      }
+      
+      .message-content {
+        max-width: 85%;
+      }
+    }
+
+    /* スクロールバー */
+    .chat-messages::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .chat-messages::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb {
+      background: #d1d5db;
+      border-radius: 3px;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af;
+    }
+
+    /* 検索結果スタイル */
+    .search-results {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      padding: 6px;
+      margin-top: 4px;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+
+    .search-results-header {
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 4px;
+      margin-bottom: 4px;
+    }
+
+    .search-results-header h3 {
+      font-size: 12px;
+      color: #4b5563;
+      margin-bottom: 2px;
+    }
+
+    .search-results-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .search-result-item {
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 3px;
+      padding: 4px 6px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .search-result-item:hover {
+      background: #f3f4f6;
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2px;
+      font-size: 10px;
+      color: #6b7280;
+    }
+
+    .result-category {
+      background: #e0e7ff;
+      color: #4f46e5;
+      padding: 1px 4px;
+      border-radius: 2px;
+      font-weight: bold;
+    }
+
+    .result-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 1px;
+    }
+
+    .result-description {
+      font-size: 10px;
+      color: #6b7280;
+      margin-bottom: 2px;
+      line-height: 1.2;
+    }
+
+    .result-keywords {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px;
+    }
+
+    .keyword-tag {
+      background: #f3f4f6;
+      color: #4b5563;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 9px;
+      font-weight: bold;
+    }
+
+    .result-actions {
+      margin-top: 2px;
+      text-align: right;
+    }
+
+    .open-file-btn {
+      background: #10a37f;
+      color: white;
+      border: none;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .open-file-btn:hover {
+      background: #0d8a6f;
+    }
+
+    .search-container {
+      padding: 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+    }
+
+    .search-input:focus {
+      outline: none;
+      border-color: #10a37f;
+      box-shadow: 0 0 0 2px rgba(16, 163, 127, 0.1);
+    }
+
+    .chat-history-item.highlight {
+      background: #fef3c7;
+      border-left: 3px solid #f59e0b;
+    }
+
+    .chat-history-item .highlight-text {
+      background: #fef3c7;
+      color: #92400e;
+      padding: 1px 2px;
+      border-radius: 2px;
+    }
+
+    /* 意図特定モードのスタイル */
+    .intent-clarification-container {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: 2px solid #4f46e5;
+      border-radius: 12px;
+      padding: 16px;
+      margin: 8px 0;
+      color: white;
+    }
+
+    .intent-header {
+      font-weight: bold;
+      margin-bottom: 12px;
+      font-size: 16px;
+    }
+
+    .intent-progress {
+      color: rgba(255,255,255,0.8);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .intent-question {
+      font-size: 16px;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+
+    .intent-cancel {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      padding: 8px 16px;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      margin-top: 12px;
+    }
+
+    .intent-cancel:hover {
+      background: rgba(255,255,255,0.3);
+    }
+  </style>
+</head>
+<body>
+  <!-- サイドバー -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">N</div>
+    </div>
+    
+    <div class="sidebar-nav">
+      <div class="nav-item active" id="new-chat">
+        <span class="nav-icon">✏️</span>
+        新しいチャット
+      </div>
+      <div class="nav-item" id="search-toggle">
+        <span class="nav-icon">🔍</span>
+        チャットを検索
+      </div>
+      
+      <!-- 検索ボックス -->
+      <div class="search-container" id="search-container" style="display: none;">
+        <input 
+          type="text" 
+          class="search-input" 
+          id="chat-search-input" 
+          placeholder="チャット履歴を検索..."
+          autocomplete="off"
+        >
+      </div>
+      
+      <div class="nav-separator"></div>
+      
+      <div class="chat-history" id="chat-history">
+        <!-- チャット履歴がここに動的に追加されます -->
+      </div>
+    </div>
+  </div>
+
+  <!-- メインコンテンツ -->
+  <div class="main-content">
+    <div class="chat-header">
+      <div class="chat-title">ナレッジチャット</div>
+      <div class="user-profile">U</div>
+    </div>
+
+    <div class="chat-container">
+      <!-- ウェルカム画面 -->
+      <div class="welcome-screen" id="welcome-screen">
+        <h1 class="welcome-title">今日はどうしましたか？</h1>
+        <p class="welcome-subtitle">業界知識や能力開発について、何でもお聞かせください</p>
+      </div>
+
+      <!-- チャットメッセージ -->
+      <div class="chat-messages" id="chat-messages">
+        <!-- メッセージがここに動的に追加されます -->
+      </div>
+    </div>
+
+    <!-- 入力エリア -->
+    <div class="input-container">
+      <div class="input-wrapper">
+        <input 
+          type="text" 
+          class="input-box" 
+          id="user-input" 
+          placeholder="質問してみましょう"
+          autocomplete="off"
+        >
+        <div class="input-actions">
+          <button class="action-button" title="ツール">
+            <span>🔧</span>
+          </button>
+          <button class="action-button" title="音声入力">
+            <span>🎤</span>
+          </button>
+          <button class="action-button send-button" id="send-button" title="送信">
+            <span>➤</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const welcomeScreen = document.getElementById('welcome-screen');
+    const chatMessages = document.getElementById('chat-messages');
+    const userInput = document.getElementById('user-input');
+    const sendButton = document.getElementById('send-button');
+    const chatHistory = document.getElementById('chat-history');
+    const newChatButton = document.getElementById('new-chat');
+
+    let currentChatId = null;
+    let chatSessions = [];
+    let sessionCounter = 0;
+    let knowledgeFiles = []; // ナレッジファイルのリスト
+    let searchToggle = document.getElementById('search-toggle');
+    let searchContainer = document.getElementById('search-container');
+    let chatSearchInput = document.getElementById('chat-search-input');
+
+    // 意図特定機能の状態管理
+    let intentClarificationState = {
+        isActive: false,
+        currentQuestion: 1,
+        maxQuestions: 3,
+        questionHistory: [],
+        answerHistory: [],
+        userIntent: null,
+        originalInput: ""
+    };
+
+    // ローカルストレージの設定
+    const STORAGE_KEY = 'shibu_rain_chat_history';
+    const MAX_SESSIONS = 50; // 最大保存セッション数
+
+    // ナレッジファイルの構造
+    const knowledgeFileStructure = [
+      {
+        path: 'KNOWLEDGE/業界別/建設業界_業界一般.md',
+        title: '建設業界_業界一般',
+        category: '業界別',
+        keywords: ['建設業界', '業界一般', '建設', '現場', '工事'],
+        description: '建設業界の全体像、特徴、課題、動向をまとめたナレッジ'
+      },
+      {
+        path: 'KNOWLEDGE/業界別/建設業界_現場職人.md',
+        title: '建設業界_現場職人',
+        category: '業界別',
+        keywords: ['建設業界', '現場職人', '技能者', '大工', '左官', '現場'],
+        description: '建設業界の現場職人に関する特徴、課題、改善施策をまとめたナレッジ'
+      },
+      {
+        path: 'KNOWLEDGE/能力開発テーマ/組織風土改革_建設業界.md',
+        title: '組織風土改革_建設業界',
+        category: '能力開発テーマ',
+        keywords: ['組織風土改革', '建設業界', '組織文化', '風土改革'],
+        description: '組織風土改革テーマの建設業界向けナレッジ'
+      },
+      {
+        path: 'KNOWLEDGE/能力開発テーマ/女性活躍_建設業界.md',
+        title: '女性活躍_建設業界',
+        category: '能力開発テーマ',
+        keywords: ['女性活躍', '建設業界', '女性', 'ダイバーシティ', '女性管理職'],
+        description: '女性活躍テーマの建設業界向けナレッジ'
+      }
+    ];
+
+    // ナレッジファイルを検索
+    function searchKnowledgeFiles(query) {
+      const results = [];
+      const queryLower = query.toLowerCase();
+      
+      for (const file of knowledgeFileStructure) {
+        let score = 0;
+        
+        // タイトルでのマッチング
+        if (file.title.toLowerCase().includes(queryLower)) {
+          score += 10;
+        }
+        
+        // キーワードでのマッチング
+        for (const keyword of file.keywords) {
+          if (keyword.toLowerCase().includes(queryLower)) {
+            score += 5;
+          }
+        }
+        
+        // 説明でのマッチング
+        if (file.description.toLowerCase().includes(queryLower)) {
+          score += 3;
+        }
+        
+        // カテゴリでのマッチング
+        if (file.category.toLowerCase().includes(queryLower)) {
+          score += 2;
+        }
+        
+        if (score > 0) {
+          results.push({
+            ...file,
+            score: score
+          });
+        }
+      }
+      
+      // スコアでソート
+      results.sort((a, b) => b.score - a.score);
+      return results;
+    }
+
+    // 検索結果を表示
+    function displaySearchResults(results, query) {
+      const resultsHtml = results.map(file => `
+        <div class="search-result-item">
+          <div class="result-header">
+            <span class="result-category">${file.category}</span>
+            <span class="result-score">関連度: ${file.score}</span>
+          </div>
+          <div class="result-title">${file.title}</div>
+          <div class="result-description">${file.description}</div>
+          <div class="result-keywords">
+            ${file.keywords.map(keyword => `<span class="keyword-tag">${keyword}</span>`).join('')}
+          </div>
+          <div class="result-actions">
+            <button class="open-file-btn" onclick="openKnowledgeFile('${file.path}')">
+              📄 Obsidianで開く
+            </button>
+          </div>
+        </div>
+      `).join('');
+      
+      return `
+        <div class="search-results">
+          <div class="search-results-header">
+            <h3>「${query}」の検索結果 (${results.length}件)</h3>
+          </div>
+          <div class="search-results-list">
+            ${resultsHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    // ナレッジファイルを開く
+    function openKnowledgeFile(filePath) {
+      // Obsidianでファイルを直接開く
+      const obsidianUrl = `obsidian://open?vault=Obsidian%20Vault&file=${encodeURIComponent(filePath)}`;
+      
+      // 新しいウィンドウでObsidianを開く
+      window.open(obsidianUrl, '_blank');
+    }
+
+    // 新しいチャット開始
+    function startNewChat() {
+      // チャット履歴をクリア
+      chatMessages.innerHTML = '';
+      welcomeScreen.style.display = 'flex';
+      chatMessages.style.display = 'none';
+      
+      // アクティブ状態をリセット
+      document.querySelectorAll('.nav-item, .chat-history-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      newChatButton.classList.add('active');
+      
+      currentChatId = null;
+      
+      // 検索ボックスを非表示
+      searchContainer.style.display = 'none';
+      chatSearchInput.value = '';
+      
+      userInput.focus();
+    }
+
+    // チャット履歴アイテムを追加
+    function addChatHistoryItem(title, chatId) {
+      const historyItem = document.createElement('div');
+      historyItem.className = 'chat-history-item';
+      historyItem.setAttribute('data-chat-id', chatId);
+      
+      historyItem.innerHTML = `
+        <span class="chat-history-icon">💬</span>
+        <span class="chat-history-title">${title}</span>
+      `;
+      
+      historyItem.addEventListener('click', () => {
+        loadChatSession(chatId);
+      });
+      
+      chatHistory.appendChild(historyItem);
+      
+      // チャット履歴を保存
+      saveChatHistory();
+    }
+
+    // チャットセッションを読み込み
+    function loadChatSession(chatId) {
+      const session = chatSessions.find(s => s.id === chatId);
+      if (!session) return;
+      
+      // アクティブ状態を更新
+      document.querySelectorAll('.nav-item, .chat-history-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      document.querySelector(`[data-chat-id="${chatId}"]`).classList.add('active');
+      
+      // チャットメッセージを表示
+      chatMessages.innerHTML = '';
+      session.messages.forEach(msg => {
+        addMessageToDisplay(msg.content, msg.sender);
+      });
+      
+      welcomeScreen.style.display = 'none';
+      chatMessages.style.display = 'block';
+      currentChatId = chatId;
+    }
+
+    // メッセージ送信処理
+    function sendMessage() {
+      const message = userInput.value.trim();
+      if (!message) return;
+
+      // 新しいチャットの場合、セッションを作成
+      if (!currentChatId) {
+        sessionCounter++;
+        currentChatId = `chat_${sessionCounter}`;
+        
+        // チャットタイトルを生成（最初のメッセージから）
+        const title = message.length > 20 ? message.substring(0, 20) + '...' : message;
+        addChatHistoryItem(title, currentChatId);
+        
+        chatSessions.push({
+          id: currentChatId,
+          title: title,
+          messages: []
+        });
+      }
+
+      // ウェルカム画面を非表示
+      welcomeScreen.style.display = 'none';
+      chatMessages.style.display = 'block';
+
+      // ユーザーメッセージを追加
+      addMessage(message, 'user');
+      
+      // 入力フィールドをクリア
+      userInput.value = '';
+
+      // 意図特定モードがアクティブでない場合のみ、意図特定を試行
+      if (!intentClarificationState.isActive) {
+        // 意図特定を開始
+        setTimeout(async () => {
+          const response = await startIntentClarification(message);
+          if (response) {
+            // 意図特定が開始されなかった場合は通常の応答を生成
+            addMessage(response, 'ai');
+          }
+          // 意図特定が開始された場合は、startIntentClarification内で質問が表示される
+        }, 1000);
+      } else {
+        // 意図特定モードがアクティブな場合は、回答として処理
+        setTimeout(async () => {
+          await processIntentAnswer(message);
+        }, 1000);
+      }
+    }
+
+    // メッセージ追加
+    function addMessage(content, sender) {
+      // 現在のセッションにメッセージを保存
+      if (currentChatId) {
+        const session = chatSessions.find(s => s.id === currentChatId);
+        if (session) {
+          session.messages.push({ content, sender });
+          // チャット履歴を保存
+          saveChatHistory();
+        }
+      }
+      
+      addMessageToDisplay(content, sender);
+    }
+
+    // メッセージを表示に追加
+    function addMessageToDisplay(content, sender) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${sender}`;
+      
+      const avatar = document.createElement('div');
+      avatar.className = 'message-avatar';
+      avatar.textContent = sender === 'user' ? 'U' : 'AI';
+      
+      const messageContent = document.createElement('div');
+      messageContent.className = 'message-content';
+      
+      // 関連ナレッジファイルのHTMLが含まれているかチェック
+      if (content.includes('<div class="search-results">')) {
+        // HTMLコンテンツを分割して処理
+        const parts = content.split('<div class="search-results">');
+        const textPart = parts[0];
+        const htmlPart = '<div class="search-results">' + parts[1];
+        
+        // テキスト部分を処理
+        const processedText = processMessageContent(textPart);
+        messageContent.innerHTML = processedText + htmlPart;
+      } else {
+        // 通常のテキスト処理
+        const processedContent = processMessageContent(content);
+        messageContent.innerHTML = processedContent;
+      }
+      
+      messageDiv.appendChild(avatar);
+      messageDiv.appendChild(messageContent);
+      
+      chatMessages.appendChild(messageDiv);
+      
+      // スクロールを最下部に
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // メッセージ内容の処理（改行、太字、リスト等）
+    function processMessageContent(content) {
+      // 空の場合はそのまま返す
+      if (!content || content.trim() === '') {
+        return content;
+      }
+      
+      let processed = content;
+      
+      // デバッグ用：改行の数を確認
+      const originalNewlines = (content.match(/\n/g) || []).length;
+      
+      // 1. コードブロックの処理（先に処理）
+      processed = processed.replace(/```([\s\S]*?)```/g, '<pre style="background: #f3f4f6; padding: 8px 12px; border-radius: 6px; margin: 8px 0; overflow-x: auto;"><code>$1</code></pre>');
+      
+      // 2. インラインコードの処理
+      processed = processed.replace(/`([^`]+)`/g, '<code style="background: #f3f4f6; padding: 2px 4px; border-radius: 3px; font-family: monospace; font-size: 12px;">$1</code>');
+      
+      // 3. 太字の処理 (**text** → <strong>text</strong>)
+      processed = processed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      
+      // 4. 斜体の処理 (*text* → <em>text</em>)
+      processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>');
+      
+      // 5. 見出しの処理
+      processed = processed.replace(/^#\s+(.*?)(?=\n|$)/gm, '<h3 style="margin: 12px 0 6px 0; font-size: 16px; font-weight: 600; color: #111827;">$1</h3>');
+      processed = processed.replace(/^##\s+(.*?)(?=\n|$)/gm, '<h4 style="margin: 10px 0 4px 0; font-size: 14px; font-weight: 600; color: #374151;">$1</h4>');
+      
+      // 6. リストの処理（箇条書き）
+      processed = processed.replace(/^•\s+(.*?)(?=\n|$)/gm, '<li>$1</li>');
+      processed = processed.replace(/(<li>.*?<\/li>)/s, '<ul style="margin: 8px 0; padding-left: 20px;">$1</ul>');
+      
+      // 7. 改行を<br>に変換（最後に処理）
+      processed = processed.replace(/\n/g, '<br>');
+      
+      // デバッグ用：処理結果を確認
+      const processedBrTags = (processed.match(/<br>/g) || []).length;
+      console.log(`改行処理: 元の改行数=${originalNewlines}, 処理後の<br>数=${processedBrTags}`);
+      
+      return processed;
+    }
+
+    // APIとの通信
+    async function callChatAPI(message) {
+      try {
+        const response = await fetch('http://localhost:8000/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: message,
+            chat_id: currentChatId
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        return data;
+      } catch (error) {
+        console.error('API通信エラー:', error);
+        return null;
+      }
+    }
+
+    // 意図特定機能のAPI呼び出し
+    async function callIntentAPI(endpoint, data) {
+      try {
+        const response = await fetch(`http://localhost:8000${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data)
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        return await response.json();
+      } catch (error) {
+        console.error('意図特定API通信エラー:', error);
+        return null;
+      }
+    }
+
+    // 意図特定を開始
+    async function startIntentClarification(userInput) {
+      const response = await callIntentAPI('/intent/start', {
+        user_input: userInput,
+        chat_id: currentChatId
+      });
+      
+      if (response && response.is_ambiguous) {
+        intentClarificationState.isActive = true;
+        intentClarificationState.originalInput = userInput;
+        intentClarificationState.currentQuestion = 1;
+        intentClarificationState.questionHistory = [];
+        intentClarificationState.answerHistory = [];
+        
+        // 質問を表示
+        displayIntentQuestion(response.question);
+        return null; // 意図特定が開始されたことを示すためにnullを返す
+      } else {
+        // 曖昧でない場合は通常の検索
+        return await generateResponse(userInput);
+      }
+    }
+
+    // 意図特定の質問を表示
+    function displayIntentQuestion(question) {
+      const questionText = `🤔 **より詳しい情報をお聞かせください**\n\n質問 ${question.question_number}/${question.max_questions}\n\n${question.question}`;
+      
+      addMessage(questionText, 'ai');
+      
+      // 入力フィールドのプレースホルダーを変更
+      userInput.placeholder = "自然な言葉でお答えください";
+    }
+
+    // 意図特定の回答を処理（自然言語）
+    async function processIntentAnswer(userAnswer) {
+      // 回答を記録
+      intentClarificationState.answerHistory.push(userAnswer);
+      
+      // 次の質問を生成
+      const nextQuestionNumber = intentClarificationState.currentQuestion + 1;
+      
+      if (nextQuestionNumber <= intentClarificationState.maxQuestions) {
+        // 次の質問を表示
+        const response = await callIntentAPI('/intent/question', {
+          user_input: intentClarificationState.originalInput,
+          question_number: nextQuestionNumber,
+          answers: intentClarificationState.answerHistory
+        });
+        
+        if (response && response.question) {
+          intentClarificationState.currentQuestion = nextQuestionNumber;
+          displayIntentQuestion(response.question);
+        }
+      } else {
+        // 意図特定を完了
+        await completeIntentClarification();
+      }
+    }
+
+    // 意図特定を完了
+    async function completeIntentClarification() {
+      const response = await callIntentAPI('/intent/complete', {
+        user_input: intentClarificationState.originalInput,
+        answers: intentClarificationState.answerHistory
+      });
+      
+      if (response) {
+        intentClarificationState.userIntent = response;
+        
+        // 意図に基づいてナレッジを検索
+        const knowledgeResponse = await callIntentAPI('/knowledge/search-by-intent', response);
+        
+        if (knowledgeResponse) {
+          let resultMessage = `理解しました！\n\n`;
+          resultMessage += knowledgeResponse.explanation + '\n\n';
+          
+          if (knowledgeResponse.knowledge_files && knowledgeResponse.knowledge_files.length > 0) {
+            resultMessage += displaySearchResults(knowledgeResponse.knowledge_files, intentClarificationState.originalInput);
+          }
+          
+          addMessage(resultMessage, 'ai');
+        }
+        
+        // 意図特定モードを終了
+        intentClarificationState.isActive = false;
+        userInput.placeholder = "質問してみましょう"; // プレースホルダーを元に戻す
+      }
+    }
+
+    // 意図特定をキャンセル（現在は使用していない）
+    function cancelIntentClarification() {
+      intentClarificationState.isActive = false;
+      addMessage("何かご質問がございましたらお聞かせください。", 'ai');
+      userInput.placeholder = "質問してみましょう"; // プレースホルダーを元に戻す
+    }
+
+    // 検索機能付き応答生成
+    async function generateResponse(userMessage) {
+      try {
+        // APIを呼び出し
+        const apiResponse = await callChatAPI(userMessage);
+        
+        if (apiResponse && apiResponse.response) {
+          // APIからの応答を表示
+          let response = apiResponse.response;
+          
+          // 関連ナレッジファイルがある場合は追加表示
+          if (apiResponse.knowledge_files && apiResponse.knowledge_files.length > 0) {
+            response += `\n\n📚 **関連ナレッジファイル**\n\n`;
+            response += displaySearchResults(apiResponse.knowledge_files, userMessage);
+          }
+          
+          return response;
+        } else {
+          // APIが失敗した場合のフォールバック
+          return `申し訳ございませんが、現在システムに接続できません。\n\n以下のようなキーワードでお試しください：\n• 建設業界\n• 女性活躍\n• 組織風土改革\n• 現場職人\n• 働き方改革\n• 新卒採用\n• 管理職育成`;
+        }
+      } catch (error) {
+        console.error('応答生成エラー:', error);
+        return `エラーが発生しました: ${error.message}`;
+      }
+    }
+
+    // ローカルストレージからチャット履歴を読み込み
+    function loadChatHistory() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const data = JSON.parse(saved);
+          chatSessions = data.sessions || [];
+          sessionCounter = data.counter || 0;
+          
+          // チャット履歴を表示
+          chatSessions.forEach(session => {
+            addChatHistoryItem(session.title, session.id);
+          });
+        }
+      } catch (error) {
+        console.error('チャット履歴の読み込みエラー:', error);
+      }
+    }
+
+    // ローカルストレージにチャット履歴を保存
+    function saveChatHistory() {
+      try {
+        // 最大セッション数を超えた場合、古いものを削除
+        if (chatSessions.length > MAX_SESSIONS) {
+          chatSessions = chatSessions.slice(-MAX_SESSIONS);
+        }
+        
+        const data = {
+          sessions: chatSessions,
+          counter: sessionCounter,
+          lastSaved: new Date().toISOString()
+        };
+        
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (error) {
+        console.error('チャット履歴の保存エラー:', error);
+      }
+    }
+
+    // 検索機能
+    function searchChatHistory(query) {
+      const queryLower = query.toLowerCase();
+      const historyItems = document.querySelectorAll('.chat-history-item');
+      
+      historyItems.forEach(item => {
+        const title = item.querySelector('.chat-history-title').textContent;
+        const chatId = item.getAttribute('data-chat-id');
+        const session = chatSessions.find(s => s.id === chatId);
+        
+        let hasMatch = title.toLowerCase().includes(queryLower);
+        
+        // メッセージ内容も検索
+        if (session && session.messages) {
+          hasMatch = hasMatch || session.messages.some(msg => 
+            msg.content.toLowerCase().includes(queryLower)
+          );
+        }
+        
+        if (hasMatch) {
+          item.style.display = 'flex';
+          item.classList.add('highlight');
+          
+          // タイトルにハイライトを追加
+          const titleElement = item.querySelector('.chat-history-title');
+          if (query && title.toLowerCase().includes(queryLower)) {
+            const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi');
+            titleElement.innerHTML = title.replace(regex, '<span class="highlight-text">$1</span>');
+          }
+        } else {
+          item.style.display = 'none';
+          item.classList.remove('highlight');
+        }
+      });
+    }
+
+    // 正規表現のエスケープ
+    function escapeRegExp(string) {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // 検索ボックスの表示/非表示切り替え
+    function toggleSearch() {
+      const isVisible = searchContainer.style.display !== 'none';
+      searchContainer.style.display = isVisible ? 'none' : 'block';
+      
+      if (!isVisible) {
+        chatSearchInput.focus();
+      } else {
+        chatSearchInput.value = '';
+        // 検索結果をクリア
+        document.querySelectorAll('.chat-history-item').forEach(item => {
+          item.style.display = 'flex';
+          item.classList.remove('highlight');
+          const titleElement = item.querySelector('.chat-history-title');
+          titleElement.innerHTML = titleElement.textContent;
+        });
+      }
+    }
+
+    // イベントリスナー
+    sendButton.addEventListener('click', sendMessage);
+    userInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
+    });
+
+    // 新しいチャットボタンのイベント
+    newChatButton.addEventListener('click', startNewChat);
+
+    // 検索関連のイベント
+    searchToggle.addEventListener('click', toggleSearch);
+    chatSearchInput.addEventListener('input', (e) => {
+      searchChatHistory(e.target.value);
+    });
+
+    // チャット履歴を読み込み
+    loadChatHistory();
+
+    // 入力フィールドのフォーカス
+    userInput.focus();
+  </script>
+</body>
+</html> 

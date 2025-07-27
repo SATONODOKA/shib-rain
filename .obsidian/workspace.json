@@ -1,0 +1,206 @@
+{
+  "main": {
+    "id": "173bb7f750dccdcd",
+    "type": "split",
+    "children": [
+      {
+        "id": "4d265836afd02ecb",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "cc1f9562eb41a464",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "KNOWLEDGE/能力開発テーマ/女性活躍_建設業界.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "女性活躍_建設業界"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "e6f7db0ddd02e915",
+    "type": "split",
+    "children": [
+      {
+        "id": "2950a8bb08790723",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "43471d12efa40afa",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "2fd4dea33fd46fc6",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "4499646d72fe7670",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "6620cb4f53d07fdd",
+    "type": "split",
+    "children": [
+      {
+        "id": "069344f696e0e633",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "ad73edc8222ea6f3",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Welcome.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for Welcome"
+            }
+          },
+          {
+            "id": "1cc00d13ab241969",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Welcome.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from Welcome"
+            }
+          },
+          {
+            "id": "37c5c36a746b11d2",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "d8841dc23628d793",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Welcome.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of Welcome"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false
+    }
+  },
+  "active": "cc1f9562eb41a464",
+  "lastOpenFiles": [
+    "backend/main_simple.py",
+    "KNOWLEDGE/業界別/建設業界_現場職人.md",
+    "要件定義書_意図特定機能.md",
+    "KNOWLEDGE/能力開発テーマ/女性活躍_建設業界.md",
+    "KNOWLEDGE/能力開発テーマ/組織風土改革_建設業界.md",
+    "temp-repo/ナレッジ階層化システム.md",
+    "temp-repo/ナレッジ階層化_自動化スクリプト.py",
+    "temp-repo/tsconfig.json",
+    "temp-repo/tailwind.config.js",
+    "temp-repo/tag_config.json",
+    "temp-repo/src/app/api/test/route.ts",
+    "temp-repo/src/app/api/search/route.ts",
+    "temp-repo/src/app/api/chat/route.ts",
+    "temp-repo/src/app/api/test",
+    "temp-repo/src/app/api/search",
+    "temp-repo/src/app/api/chat",
+    "temp-repo/README.md",
+    "temp-repo/KNOWLEDGE/能力開発テーマ/組織風土改革_建設業界.md",
+    "temp-repo/KNOWLEDGE/能力開発テーマ/女性活躍_建設業界.md",
+    "temp-repo/KNOWLEDGE/業界別/建設業界_現場職人.md",
+    "temp-repo/KNOWLEDGE/業界別/建設業界_業界一般.md",
+    "temp-repo/INBOX/五洋建設_アポメモ_20240315_女性管理職育成.md",
+    "temp-repo/INBOX/五洋建設_アポメモ_20240208_働き方改革.md",
+    "temp-repo/INBOX/五洋建設_アポメモ_20240125_新卒女性採用.md",
+    "temp-repo/INBOX/五洋建設_アポメモ_20240112_現場環境改善.md",
+    "temp-repo/INBOX/五洋建設_アポメモ_20231220_組織風土改革.md",
+    "INBOX/五洋建設_アポメモ_20231220_組織風土改革.md",
+    "INBOX/五洋建設_アポメモ_20240112_現場環境改善.md",
+    "INBOX/五洋建設_アポメモ_20240125_新卒女性採用.md",
+    "INBOX/五洋建設_アポメモ_20240208_働き方改革.md",
+    "INBOX/五洋建設_アポメモ_20240315_女性管理職育成.md",
+    "Welcome.md"
+  ]
+}
