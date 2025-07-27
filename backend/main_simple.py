@@ -211,13 +211,66 @@ class IntentClarificationService:
     
     def is_ambiguous(self, user_input: str) -> bool:
         """入力が曖昧かどうかを判定"""
-        ambiguous_words = ["知りたい", "教えて", "について", "どう", "何か"]
-        return any(word in user_input for word in ambiguous_words)
+        # 明確な質問のパターン（より柔軟に）
+        industry_keywords = ["IT業界", "建設業界", "製造業界", "金融業界", "医療業界", "教育業界"]
+        theme_keywords = ["動向", "最近", "ホット", "トピック", "課題", "事例", "研修", "育成", "改革", "防止", "パワハラ"]
+        
+        # 業界名 + 具体的なテーマがあれば明確
+        has_industry = any(industry in user_input for industry in industry_keywords)
+        has_theme = any(theme in user_input for theme in theme_keywords)
+        
+        if has_industry and has_theme:
+            return False
+        
+        # 具体的なキーワードの組み合わせ
+        specific_combinations = [
+            ("IT業界", "動向"),
+            ("IT業界", "最近"),
+            ("IT業界", "ホット"),
+            ("IT業界", "トピック"),
+            ("建設業界", "パワハラ"),
+            ("建設業界", "事例"),
+            ("建設業界", "防止"),
+            ("人材", "育成"),
+            ("組織", "風土"),
+            ("女性", "活躍"),
+            ("働き方", "改革")
+        ]
+        
+        for industry, theme in specific_combinations:
+            if industry in user_input and theme in user_input:
+                return False
+        
+        # 曖昧な表現のパターン
+        ambiguous_words = ["知りたい", "教えて", "について", "どう", "何か", "どんな"]
+        has_ambiguous = any(word in user_input for word in ambiguous_words)
+        
+        # 業界名 + 曖昧な表現の場合は曖昧
+        if has_industry and has_ambiguous:
+            return True
+        
+        # デフォルトは曖昧と判定
+        return True
     
     def has_sufficient_information(self, user_input: str, answers: List[str]) -> bool:
         """十分な情報が得られたかを判定"""
+        # ユーザーの反応をチェック（早期終了のサイン）
+        negative_responses = ["いや", "そのまま", "いや、、", "いや、", "いや、そのまま", "そのままなんだけど"]
+        for answer in answers:
+            if any(negative in answer for negative in negative_responses):
+                return True  # ユーザーが明確に答えたい場合は即答
+        
+        # 回答がない場合でも、十分に明確な質問の場合は即答
         if not answers:
-            return False
+            # 業界名 + 具体的なテーマがあれば十分
+            industry_keywords = ["建設業界", "IT業界", "製造業界", "金融業界", "医療業界", "教育業界"]
+            theme_keywords = ["動向", "最近", "ホット", "トピック", "課題", "事例", "研修", "育成", "改革", "防止", "パワハラ"]
+            
+            has_industry = any(industry in user_input for industry in industry_keywords)
+            has_theme = any(theme in user_input for theme in theme_keywords)
+            
+            if has_industry and has_theme:
+                return True
         
         # 回答の長さと内容をチェック
         total_length = sum(len(answer) for answer in answers)
@@ -228,7 +281,8 @@ class IntentClarificationService:
         specific_keywords = [
             "建設業界", "パワハラ", "研修", "事例", "対策", "防止", "管理職", 
             "現場", "職人", "女性", "育成", "組織", "風土", "改革", "採用",
-            "新卒", "働き方", "人材", "技能", "コミュニケーション", "安全"
+            "新卒", "働き方", "人材", "技能", "コミュニケーション", "安全",
+            "IT業界", "動向", "最近", "ホット", "トピック", "トレンド"
         ]
         
         combined_text = f"{user_input} {' '.join(answers)}"
@@ -246,6 +300,14 @@ class IntentClarificationService:
         # 回答の長さが十分で、具体的な内容が含まれている場合
         if total_length >= 30 and any(len(answer) >= 15 for answer in answers):
             return True
+        
+        # 業界名が明確に含まれている場合
+        industry_keywords = ["建設業界", "IT業界", "製造業界", "金融業界", "医療業界", "教育業界"]
+        if any(industry in combined_text for industry in industry_keywords):
+            # 業界名 + 具体的なテーマがあれば十分
+            theme_keywords = ["動向", "課題", "事例", "研修", "育成", "改革", "防止"]
+            if any(theme in combined_text for theme in theme_keywords):
+                return True
         
         return False
     
@@ -274,6 +336,18 @@ class IntentClarificationService:
         if answers:
             conversation_context += f"\nこれまでの回答: {' '.join(answers)}"
         
+        # ユーザーの反応をチェック
+        negative_responses = ["いや", "そのまま", "いや、、", "いや、", "いや、そのまま", "そのままなんだけど"]
+        for answer in answers:
+            if any(negative in answer for negative in negative_responses):
+                # ユーザーが明確に答えたい場合は早期完了
+                return IntentQuestion(
+                    question="理解しました。回答を生成します。",
+                    question_number=question_number,
+                    max_questions=3,
+                    is_complete=True
+                )
+        
         prompt = f"""
 あなたは人材開発・組織開発のコンサルタントです。ユーザーが知りたい具体的な情報を特定するための質問を生成してください。
 
@@ -284,15 +358,15 @@ class IntentClarificationService:
 
 以下の条件に従って質問を生成してください：
 1. ユーザーが知りたい具体的な内容を掘り下げる質問をする
-2. 「どのような情報をお探しですか？」という方向性で質問する
-3. 必ず日本語で回答してください
-4. 質問のみを返し、余計な文章は含めないでください
-5. 質問は簡潔に、1文で終わるようにしてください
+2. 質問は簡潔で自然な日本語にする
+3. 質問のみを返し、余計な文章は含めないでください
+4. 質問は1文で終わるようにしてください
+5. ユーザーが「いや」「そのまま」などと答えた場合は、早期完了を示す
 
 質問例：
-「建設業界についてですね。どのような情報をお探しですか？」
+「建設業界のどのような側面について知りたいですか？」
 「パワハラ防止について、どのような具体的な情報をお探しですか？」
-「人材育成の課題について、どのような具体的な課題に興味がありますか？」
+「IT業界の動向について、どのような分野に興味がありますか？」
 
 ユーザーの質問「{user_input}」に基づいて、ユーザーが知りたい具体的な内容を掘り下げる質問を1つだけ生成してください。
 """
@@ -316,21 +390,37 @@ class IntentClarificationService:
     
     def _generate_fallback_question(self, user_input: str, question_number: int, answers: List[str]) -> IntentQuestion:
         """フォールバック用の質問生成"""
+        # ユーザーの反応をチェック
+        negative_responses = ["いや", "そのまま", "いや、、", "いや、", "いや、そのまま", "そのままなんだけど"]
+        for answer in answers:
+            if any(negative in answer for negative in negative_responses):
+                # ユーザーが明確に答えたい場合は早期完了
+                return IntentQuestion(
+                    question="理解しました。回答を生成します。",
+                    question_number=question_number,
+                    max_questions=3,
+                    is_complete=True
+                )
+        
         context = f"{user_input}"
         if answers:
             context += f" {' '.join(answers)}"
         
         if question_number == 1:
-            if "建設" in user_input:
-                question = f"「{user_input}」について、どのようなテーマに興味がありますか？市場動向、人材育成の課題、成功事例など、どのような情報をお探しですか？"
+            if "IT業界" in user_input or "IT" in user_input:
+                question = "IT業界のどのような側面について知りたいですか？技術動向、人材育成、働き方改革など"
+            elif "建設" in user_input:
+                question = "建設業界のどのような側面について知りたいですか？市場動向、人材育成、現場環境など"
             elif "パワハラ" in user_input or "ハラスメント" in user_input:
-                question = f"「{user_input}」について、どのような具体的な情報をお探しですか？研修内容、事例、対策方法、法規制など"
+                question = "パワハラ防止について、どのような具体的な情報をお探しですか？研修内容、事例、対策方法など"
             elif "人材" in user_input or "育成" in user_input:
-                question = f"「{user_input}」について、どのような具体的な課題に興味がありますか？技能者不足、世代間ギャップ、研修制度など"
+                question = "人材育成について、どのような具体的な課題に興味がありますか？技能者不足、世代間ギャップ、研修制度など"
             else:
                 question = f"「{user_input}」について、どのような情報をお探しですか？"
         elif question_number == 2:
-            if "パワハラ" in context or "ハラスメント" in context:
+            if "IT業界" in context or "IT" in context:
+                question = "IT業界の動向について、どのような分野に興味がありますか？AI、DX、人材不足など"
+            elif "パワハラ" in context or "ハラスメント" in context:
                 question = "パワハラ防止について、どのような具体的な情報をお探しですか？研修内容、事例、対策方法など"
             elif "建設" in context:
                 question = "建設業界のどのような側面について知りたいですか？現場環境、管理職向け、新入社員向けなど"
@@ -439,20 +529,59 @@ class IntentClarificationService:
     def _extract_keywords(self, text: str) -> List[str]:
         """キーワードを抽出"""
         keywords = []
+        text_lower = text.lower()
         
-        # 基本的なキーワード抽出
-        if "パワハラ" in text or "ハラスメント" in text or "撲滅" in text:
-            keywords.append("パワハラ防止")
-        if "建設" in text:
-            keywords.append("建設業界")
-        if "研修" in text:
-            keywords.append("研修")
-        if "女性" in text:
-            keywords.append("女性活躍")
-        if "組織" in text:
-            keywords.append("組織風土")
-        if "現場" in text:
-            keywords.append("現場")
+        # テーマキーワード（最優先）
+        theme_keywords = {
+            "パワハラ防止": ["パワハラ", "ハラスメント", "防止", "撲滅", "職場環境", "研修"],
+            "女性活躍": ["女性", "活躍", "ダイバーシティ", "女性活躍"],
+            "組織風土改革": ["組織", "風土", "文化", "組織風土", "組織文化", "改革"],
+            "働き方改革": ["働き方", "改革", "ワークライフ", "バランス", "働き方改革"],
+            "人材育成": ["人材", "育成", "教育", "研修", "スキル", "人材育成"],
+            "管理職育成": ["管理職", "育成", "リーダー", "マネージャー", "管理職候補"],
+            "若手離職防止": ["若手", "離職", "定着", "若手中堅", "若手離職"],
+            "新人育成": ["新人", "育成", "新卒", "新人育成", "新入社員"],
+            "コーチング": ["コーチング", "1on1", "面談", "コーチング1on1"],
+            "人的資本開示": ["人的資本", "開示", "人的資本開示", "投資家"],
+            "デジタル化推進": ["デジタル", "DX", "デジタル化", "デジタル変革"],
+            "エンゲージメント向上": ["エンゲージメント", "従業員満足", "エンゲージメント向上"]
+        }
+        
+        # 業界キーワード（中優先度）
+        industry_keywords = {
+            "建設業界": ["建設", "建築", "五洋建設", "大林組", "鹿島建設", "清水建設"],
+            "IT業界": ["IT", "情報技術", "ソフトウェア", "システム", "プログラミング", "エンジニア"],
+            "製造業界": ["製造", "工場", "生産", "製造業"],
+            "金融業界": ["金融", "銀行", "三菱UFJ", "みずほ", "三井住友", "投資"],
+            "小売業界": ["小売", "イオン", "セブン", "ファミマ", "ローソン", "コンビニ"],
+            "運輸業界": ["運輸", "JR", "鉄道", "航空", "ANA", "JAL", "日本郵船"],
+            "医療業界": ["医療", "病院", "製薬", "武田薬品", "アステラス", "看護"],
+            "教育業界": ["教育", "大学", "早稲田", "東京大学", "学校", "教員"],
+            "エネルギー業界": ["エネルギー", "電力", "東京電力", "関西電力", "ガス", "石油"]
+        }
+        
+        # 1. テーマキーワードの抽出（最優先）
+        for theme, keywords in theme_keywords.items():
+            if any(keyword in text_lower for keyword in keywords):
+                keywords.append(theme)
+        
+        # 2. 業界キーワードの抽出（中優先度）
+        for industry, keywords in industry_keywords.items():
+            if any(keyword in text_lower for keyword in keywords):
+                keywords.append(industry)
+                break  # 1つの業界のみを抽出
+        
+        # 3. 具体的なキーワードの抽出
+        specific_keywords = [
+            "現場", "職人", "技能者", "技能伝承", "バリューチェーン",
+            "事例", "実践", "研修", "対策", "防止", "撲滅",
+            "動向", "最近", "ホット", "トピック", "トレンド",
+            "課題", "問題", "解決", "改善", "向上"
+        ]
+        
+        for keyword in specific_keywords:
+            if keyword in text_lower:
+                keywords.append(keyword)
         
         return keywords
     
@@ -476,85 +605,117 @@ class IntentClarificationService:
         # クエリを単語に分割（日本語と英語の両方に対応）
         query_words = re.findall(r'[\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+', query.lower())
         
-        # 業界キーワードの定義
+        # 業界キーワードの定義（大幅に拡充）
         industry_keywords = {
             "自動車": ["自動車", "車", "トヨタ", "ホンダ", "日産", "マツダ", "スバル", "三菱", "次世代リーダー"],
             "食品": ["食品", "食", "明治", "味の素", "キッコーマン", "カルビー", "江崎グリコ"],
             "化学": ["化学", "三菱化学", "住友化学", "旭化成", "東レ", "帝人"],
             "建設": ["建設", "建築", "五洋建設", "大林組", "鹿島建設", "清水建設"],
             "IT": ["IT", "情報技術", "ソフトウェア", "システム", "プログラミング", "エンジニア"],
+            "製造": ["製造", "工場", "生産", "製造業"],
             "金融": ["金融", "銀行", "三菱UFJ", "みずほ", "三井住友", "投資"],
             "小売": ["小売", "イオン", "セブン", "ファミマ", "ローソン", "コンビニ"],
             "運輸": ["運輸", "JR", "鉄道", "航空", "ANA", "JAL", "日本郵船"],
             "医療": ["医療", "病院", "製薬", "武田薬品", "アステラス", "看護"],
             "教育": ["教育", "大学", "早稲田", "東京大学", "学校", "教員"],
-            "エネルギー": ["エネルギー", "電力", "東京電力", "関西電力", "ガス", "石油"]
+            "エネルギー": ["エネルギー", "電力", "東京電力", "関西電力", "中部電力"]
         }
         
-        for file in files:
+        # テーマキーワードの定義（最優先）
+        theme_keywords = {
+            "パワハラ防止": ["パワハラ", "ハラスメント", "防止", "撲滅", "職場環境", "研修"],
+            "女性活躍": ["女性", "活躍", "ダイバーシティ", "女性活躍"],
+            "組織風土改革": ["組織", "風土", "文化", "組織風土", "組織文化", "改革"],
+            "働き方改革": ["働き方", "改革", "ワークライフ", "バランス", "働き方改革"],
+            "人材育成": ["人材", "育成", "教育", "研修", "スキル", "人材育成"],
+            "管理職育成": ["管理職", "育成", "リーダー", "マネージャー", "管理職候補"],
+            "若手離職防止": ["若手", "離職", "定着", "若手中堅", "若手離職"],
+            "新人育成": ["新人", "育成", "新卒", "新人育成", "新入社員"],
+            "コーチング": ["コーチング", "1on1", "面談", "コーチング1on1"],
+            "エンゲージメント": ["エンゲージメント", "従業員満足", "モチベーション"],
+            "デジタル化": ["デジタル", "DX", "デジタル化", "デジタル変革"],
+            "AI人材": ["AI", "人工知能", "AI人材", "デジタル人材"],
+            "人的資本": ["人的資本", "人材投資", "人的資本開示"],
+            "中堅育成": ["中堅", "中堅層", "中堅の意識改革"],
+            "経営候補": ["経営", "経営候補", "経営層", "次世代リーダー"],
+            "部長層": ["部長", "部長層", "管理職", "リーダーシップ"]
+        }
+        
+        for file_info in files:
             score = 0
+            file_path = file_info['path']
+            file_title = file_info['title']
+            file_content = file_info.get('content', '')
             
-            # 業界マッチング（高優先度）
-            query_industry = None
-            for industry, keywords in industry_keywords.items():
-                if any(keyword in query for keyword in keywords):
-                    query_industry = industry
+            # テーママッチング（最優先：300点）
+            matched_theme = None
+            for theme, keywords in theme_keywords.items():
+                for keyword in keywords:
+                    if keyword in query.lower() or keyword in file_title.lower() or keyword in file_content.lower():
+                        score += 300
+                        matched_theme = theme
+                        break
+                if matched_theme:
                     break
             
-            if query_industry:
-                # タイトルに業界名が含まれている場合、大幅にスコアアップ
-                title_lower = file["title"].lower()
-                if query_industry in title_lower:
-                    score += 50  # 大幅にスコアアップ
-                elif any(keyword in title_lower for keyword in industry_keywords.get(query_industry, [])):
-                    score += 30
-                
-                # 説明文にも業界名が含まれている場合、さらにスコアアップ
-                desc_lower = file["description"].lower()
-                if query_industry in desc_lower:
-                    score += 25
-                elif any(keyword in desc_lower for keyword in industry_keywords.get(query_industry, [])):
-                    score += 15
+            # 業界マッチング（中優先度：150点）
+            matched_industry = None
+            for industry, keywords in industry_keywords.items():
+                for keyword in keywords:
+                    if keyword in query.lower() or keyword in file_title.lower() or keyword in file_content.lower():
+                        score += 150
+                        matched_industry = industry
+                        break
+                if matched_industry:
+                    break
             
-            # タイトルでマッチング（完全一致と部分一致）
-            title_lower = file["title"].lower()
+            # テーマ+業界の組み合わせボーナス（100点）
+            if matched_theme and matched_industry:
+                score += 100
+            
+            # テーマミスマッチのペナルティ（-200点）
+            if matched_theme:
+                # クエリにテーマキーワードがあるが、ファイルにない場合
+                query_has_theme = any(theme in query.lower() for theme_list in theme_keywords.values() for theme in theme_list)
+                file_has_theme = any(theme in file_title.lower() or theme in file_content.lower() for theme_list in theme_keywords.values() for theme in theme_list)
+                if query_has_theme and not file_has_theme:
+                    score -= 200
+            
+            # 完全一致キーワードマッチング（10点）
             for word in query_words:
-                if word in title_lower:
-                    score += 5
-                elif any(char in title_lower for char in word):
-                    score += 2
+                if word in file_title.lower() or word in file_content.lower():
+                    score += 10
             
-            # キーワードでマッチング
-            for keyword in file["keywords"]:
-                keyword_lower = keyword.lower()
-                for word in query_words:
-                    if word in keyword_lower:
-                        score += 4
-                    elif any(char in keyword_lower for char in word):
-                        score += 1
+            # カテゴリマッチング（5点）
+            if '能力開発テーマ' in file_path and any(theme in query.lower() for theme_list in theme_keywords.values() for theme in theme_list):
+                score += 5
+            elif '業界別' in file_path and any(industry in query.lower() for industry_list in industry_keywords.values() for industry in industry_list):
+                score += 5
             
-            # 説明文でマッチング
-            desc_lower = file["description"].lower()
-            for word in query_words:
-                if word in desc_lower:
-                    score += 2
-                elif any(char in desc_lower for char in word):
-                    score += 0.5
-            
-            # カテゴリでマッチング
-            category_lower = file.get("category", "").lower()
-            for word in query_words:
-                if word in category_lower:
-                    score += 3
+            # ファイルサイズボーナス（小さいファイルを優先：-1点/1000文字）
+            file_size_penalty = len(file_content) // 1000
+            score -= file_size_penalty
             
             if score > 0:
-                file["score"] = score
-                results.append(file)
-                print(f"ファイル: {file['title']}, スコア: {score}")
+                results.append({
+                    'path': file_path,
+                    'title': file_title,
+                    'category': file_info.get('category', ''),
+                    'keywords': file_info.get('keywords', []),
+                    'description': file_info.get('description', ''),
+                    'file_size': file_info.get('file_size', 0),
+                    'last_modified': file_info.get('last_modified', ''),
+                    'score': score
+                })
         
-        # スコアでソート
-        results.sort(key=lambda x: x["score"], reverse=True)
-        return results[:5]  # 上位5件を返す
+        # スコアで降順ソート
+        results.sort(key=lambda x: x['score'], reverse=True)
+        
+        print(f"検索結果数: {len(results)}")
+        for result in results[:5]:  # 上位5件を表示
+            print(f"  {result['title']}: {result['score']}点")
+        
+        return results
 
 # グローバル変数としてサービスを定義
 knowledge_manager = None
@@ -659,7 +820,72 @@ def _generate_chat_response_fallback(user_message: str, knowledge_files: List[Di
     response_parts = []
     response_parts.append(f"「{user_message}」について、以下のナレッジファイルの情報をお答えします：\n")
     
-    for file in knowledge_files[:3]:  # 最大3件まで
+    # 業界とテーマを抽出
+    query_industry = None
+    query_theme = None
+    
+    # 業界キーワードの定義
+    industry_keywords = {
+        "建設": ["建設", "建築", "五洋建設", "大林組", "鹿島建設", "清水建設"],
+        "IT": ["IT", "情報技術", "ソフトウェア", "システム", "プログラミング", "エンジニア"],
+        "製造": ["製造", "工場", "生産", "製造業"],
+        "金融": ["金融", "銀行", "三菱UFJ", "みずほ", "三井住友", "投資"],
+        "小売": ["小売", "イオン", "セブン", "ファミマ", "ローソン", "コンビニ"],
+        "運輸": ["運輸", "JR", "鉄道", "航空", "ANA", "JAL", "日本郵船"],
+        "医療": ["医療", "病院", "製薬", "武田薬品", "アステラス", "看護"],
+        "教育": ["教育", "大学", "早稲田", "東京大学", "学校", "教員"],
+        "エネルギー": ["エネルギー", "電力", "東京電力", "関西電力", "中部電力"]
+    }
+    
+    # テーマキーワードの定義
+    theme_keywords = {
+        "パワハラ防止": ["パワハラ", "ハラスメント", "防止", "撲滅", "職場環境", "研修"],
+        "女性活躍": ["女性", "活躍", "ダイバーシティ", "女性活躍"],
+        "組織風土改革": ["組織", "風土", "文化", "組織風土", "組織文化", "改革"],
+        "働き方改革": ["働き方", "改革", "ワークライフ", "バランス", "働き方改革"],
+        "人材育成": ["人材", "育成", "教育", "研修", "スキル", "人材育成"],
+        "管理職育成": ["管理職", "育成", "リーダー", "マネージャー", "管理職候補"],
+        "若手離職防止": ["若手", "離職", "定着", "若手中堅", "若手離職"],
+        "新人育成": ["新人", "育成", "新卒", "新人育成", "新入社員"],
+        "コーチング": ["コーチング", "1on1", "面談", "コーチング1on1"],
+        "エンゲージメント": ["エンゲージメント", "従業員満足", "モチベーション"],
+        "デジタル化": ["デジタル", "DX", "デジタル化", "デジタル変革"],
+        "AI人材": ["AI", "人工知能", "AI人材", "デジタル人材"],
+        "人的資本": ["人的資本", "人材投資", "人的資本開示"],
+        "中堅育成": ["中堅", "中堅層", "中堅の意識改革"],
+        "経営候補": ["経営", "経営候補", "経営層", "次世代リーダー"],
+        "部長層": ["部長", "部長層", "管理職", "リーダーシップ"]
+    }
+    
+    # クエリから業界とテーマを特定
+    for industry, keywords in industry_keywords.items():
+        if any(keyword in user_message for keyword in keywords):
+            query_industry = industry
+            break
+    
+    for theme, keywords in theme_keywords.items():
+        if any(keyword in user_message for keyword in keywords):
+            query_theme = theme
+            break
+    
+    # ファイルを業界別に分類
+    same_industry_files = []
+    different_industry_files = []
+    
+    for file in knowledge_files[:5]:  # 最大5件まで
+        file_industry = None
+        for industry, keywords in industry_keywords.items():
+            if any(keyword in file['title'] for keyword in keywords):
+                file_industry = industry
+                break
+        
+        if file_industry == query_industry:
+            same_industry_files.append(file)
+        else:
+            different_industry_files.append(file)
+    
+    # 同じ業界のファイルを優先的に表示
+    for file in same_industry_files:
         try:
             rel_path = file['path'].strip()
             print(f"フォールバック: file['path']: {rel_path}")
@@ -707,6 +933,48 @@ def _generate_chat_response_fallback(user_message: str, knowledge_files: List[Di
             print(f"フォールバック: ファイル読み込みエラー {file['path']}: {e}")
             response_parts.append(f"【{file['title']}】- ファイル読み込みエラー")
     
+    # 異なる業界のファイルを参考として表示
+    if different_industry_files and query_theme:
+        response_parts.append(f"\n【参考情報】{query_theme}について、他の業界の事例も参考になります：\n")
+        
+        for file in different_industry_files[:2]:  # 最大2件まで
+            try:
+                rel_path = file['path'].strip()
+                if rel_path.startswith("KNOWLEDGE/"):
+                    file_path = Path("..") / rel_path
+                else:
+                    file_path = Path("../KNOWLEDGE") / rel_path
+                
+                if file_path.exists():
+                    content = file_path.read_text(encoding='utf-8')
+                    lines = content.split('\n')
+                    summary = []
+                    
+                    # テーマに関連する情報を抽出
+                    for i, line in enumerate(lines[:15]):
+                        line = line.strip()
+                        if not line or line.startswith('#'):
+                            continue
+                        
+                        # テーマに関連するキーワードを含む行を抽出
+                        theme_keywords_list = theme_keywords.get(query_theme, [])
+                        if any(keyword in line for keyword in theme_keywords_list):
+                            summary.append(f"• {line}")
+                            if len(summary) >= 3:  # 最大3行まで
+                                break
+                    
+                    response_parts.append(f"【{file['title']}】（参考）")
+                    if summary:
+                        response_parts.extend(summary)
+                    else:
+                        description = file.get('description', '参考情報が含まれています')
+                        if len(description) > 80:
+                            description = description[:80] + "..."
+                        response_parts.append(f"• {description}")
+                    response_parts.append("")
+            except Exception as e:
+                print(f"フォールバック: 参考ファイル読み込みエラー {file['path']}: {e}")
+    
     result = "\n".join(response_parts)
     print(f"フォールバック: 生成された応答の長さ: {len(result)}")
     return result
@@ -715,7 +983,28 @@ def _generate_chat_response_fallback(user_message: str, knowledge_files: List[Di
 async def start_intent_clarification(request: IntentClarificationRequest):
     """意図特定を開始"""
     try:
+        print(f"意図特定開始: {request.user_input}")
+        
+        # 十分な情報が既にあるかチェック
+        has_sufficient = intent_clarification_service.has_sufficient_information(request.user_input, [])
+        print(f"十分な情報があるか: {has_sufficient}")
+        
+        if has_sufficient:
+            # 十分な情報がある場合は即答
+            question = IntentQuestion(
+                question="十分な情報が得られました。回答を生成します。",
+                question_number=1,
+                max_questions=3,
+                is_complete=True
+            )
+            print("即答モードで回答を生成")
+            return IntentClarificationResponse(
+                question=question,
+                is_ambiguous=False
+            )
+        
         is_ambiguous = intent_clarification_service.is_ambiguous(request.user_input)
+        print(f"曖昧かどうか: {is_ambiguous}")
         
         if is_ambiguous:
             question = intent_clarification_service.generate_question(request.user_input, 1)
