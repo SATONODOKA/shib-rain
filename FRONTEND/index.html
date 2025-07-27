@@ -1077,23 +1077,36 @@
 
     // 意図特定を開始
     async function startIntentClarification(userInput) {
-      const response = await callIntentAPI('/intent/start', {
-        user_input: userInput,
-        chat_id: currentChatId
-      });
-      
-      if (response && response.is_ambiguous) {
-        intentClarificationState.isActive = true;
-        intentClarificationState.originalInput = userInput;
-        intentClarificationState.currentQuestion = 1;
-        intentClarificationState.questionHistory = [];
-        intentClarificationState.answerHistory = [];
+      try {
+        const response = await callIntentAPI('/intent/start', {
+          user_input: userInput,
+          chat_id: currentChatId
+        });
         
-        // 質問を表示
-        displayIntentQuestion(response.question);
-        return null; // 意図特定が開始されたことを示すためにnullを返す
-      } else {
-        // 曖昧でない場合は通常の検索
+        if (response && response.question) {
+          // 早期完了の判定
+          if (response.question.is_complete) {
+            // 十分な情報が得られたので直接回答を生成
+            await completeIntentClarificationWithResponse();
+            return null;
+          }
+          
+          intentClarificationState.isActive = true;
+          intentClarificationState.originalInput = userInput;
+          intentClarificationState.currentQuestion = 1;
+          intentClarificationState.questionHistory = [];
+          intentClarificationState.answerHistory = [];
+          
+          // 質問を表示
+          displayIntentQuestion(response.question);
+          return null; // 意図特定が開始されたことを示すためにnullを返す
+        } else {
+          // 質問が生成されなかった場合は通常の検索
+          return await generateResponse(userInput);
+        }
+      } catch (error) {
+        console.error('意図特定開始エラー:', error);
+        // エラーの場合は通常の検索にフォールバック
         return await generateResponse(userInput);
       }
     }
@@ -1110,87 +1123,118 @@
 
     // 意図特定の回答を処理（自然言語）
     async function processIntentAnswer(userAnswer) {
-      // 回答を記録
-      intentClarificationState.answerHistory.push(userAnswer);
-      
-      // 次の質問を生成
-      const nextQuestionNumber = intentClarificationState.currentQuestion + 1;
-      
-      if (nextQuestionNumber <= intentClarificationState.maxQuestions) {
-        // 次の質問を表示
-        const response = await callIntentAPI('/intent/question', {
-          user_input: intentClarificationState.originalInput,
-          question_number: nextQuestionNumber,
-          answers: intentClarificationState.answerHistory
-        });
+      try {
+        // 回答を記録
+        intentClarificationState.answerHistory.push(userAnswer);
         
-        if (response && response.question) {
-          // 早期完了の判定
-          if (response.question.is_complete) {
-            // 十分な情報が得られたので直接回答を生成
-            await completeIntentClarificationWithResponse();
-            return;
-          }
+        // 次の質問を生成
+        const nextQuestionNumber = intentClarificationState.currentQuestion + 1;
+        
+        if (nextQuestionNumber <= intentClarificationState.maxQuestions) {
+          // 次の質問を表示
+          const response = await callIntentAPI('/intent/question', {
+            user_input: intentClarificationState.originalInput,
+            question_number: nextQuestionNumber,
+            answers: intentClarificationState.answerHistory
+          });
           
-          intentClarificationState.currentQuestion = nextQuestionNumber;
-          displayIntentQuestion(response.question);
+          if (response && response.question) {
+            // 早期完了の判定
+            if (response.question.is_complete) {
+              // 十分な情報が得られたので直接回答を生成
+              await completeIntentClarificationWithResponse();
+              return;
+            }
+            
+            intentClarificationState.currentQuestion = nextQuestionNumber;
+            displayIntentQuestion(response.question);
+          } else {
+            // 質問が生成されなかった場合は意図特定を完了
+            await completeIntentClarification();
+          }
+        } else {
+          // 意図特定を完了
+          await completeIntentClarification();
         }
-      } else {
-        // 意図特定を完了
+      } catch (error) {
+        console.error('意図特定回答処理エラー:', error);
+        // エラーの場合は意図特定を完了
         await completeIntentClarification();
       }
     }
 
     // 意図特定を完了
     async function completeIntentClarification() {
-      const response = await callIntentAPI('/intent/complete', {
-        user_input: intentClarificationState.originalInput,
-        answers: intentClarificationState.answerHistory
-      });
-      
-      if (response) {
-        intentClarificationState.userIntent = response;
+      try {
+        const response = await callIntentAPI('/intent/complete', {
+          user_input: intentClarificationState.originalInput,
+          answers: intentClarificationState.answerHistory
+        });
         
-        // 意図に基づいてナレッジを検索
-        const knowledgeResponse = await callIntentAPI('/knowledge/search-by-intent', response);
-        
-        if (knowledgeResponse) {
-          let resultMessage = `理解しました！\n\n`;
-          resultMessage += knowledgeResponse.explanation + '\n\n';
+        if (response) {
+          intentClarificationState.userIntent = response;
           
-          if (knowledgeResponse.knowledge_files && knowledgeResponse.knowledge_files.length > 0) {
-            resultMessage += displaySearchResults(knowledgeResponse.knowledge_files, intentClarificationState.originalInput);
+          // 意図に基づいてナレッジを検索
+          const knowledgeResponse = await callIntentAPI('/knowledge/search-by-intent', response);
+          
+          if (knowledgeResponse) {
+            let resultMessage = `理解しました！\n\n`;
+            resultMessage += knowledgeResponse.explanation + '\n\n';
+            
+            if (knowledgeResponse.knowledge_files && knowledgeResponse.knowledge_files.length > 0) {
+              resultMessage += displaySearchResults(knowledgeResponse.knowledge_files, intentClarificationState.originalInput);
+            }
+            
+            addMessage(resultMessage, 'ai');
           }
           
-          addMessage(resultMessage, 'ai');
+          // 意図特定モードを終了
+          intentClarificationState.isActive = false;
+          userInput.placeholder = "質問してみましょう"; // プレースホルダーを元に戻す
         }
+      } catch (error) {
+        console.error('意図特定完了エラー:', error);
+        // エラーの場合は通常の検索にフォールバック
+        const fallbackResponse = await generateResponse(intentClarificationState.originalInput);
+        addMessage(fallbackResponse, 'ai');
         
         // 意図特定モードを終了
         intentClarificationState.isActive = false;
-        userInput.placeholder = "質問してみましょう"; // プレースホルダーを元に戻す
+        userInput.placeholder = "質問してみましょう";
       }
     }
 
     // 早期完了時に直接回答を生成
     async function completeIntentClarificationWithResponse() {
-      const response = await callIntentAPI('/intent/complete-with-response', {
-        user_input: intentClarificationState.originalInput,
-        answers: intentClarificationState.answerHistory
-      });
-      
-      if (response) {
-        let resultMessage = `理解しました！\n\n`;
-        resultMessage += response.response + '\n\n';
+      try {
+        const response = await callIntentAPI('/intent/complete-with-response', {
+          user_input: intentClarificationState.originalInput,
+          answers: intentClarificationState.answerHistory
+        });
         
-        if (response.knowledge_files && response.knowledge_files.length > 0) {
-          resultMessage += displaySearchResults(response.knowledge_files, intentClarificationState.originalInput);
+        if (response) {
+          let resultMessage = `理解しました！\n\n`;
+          resultMessage += response.response + '\n\n';
+          
+          if (response.knowledge_files && response.knowledge_files.length > 0) {
+            resultMessage += displaySearchResults(response.knowledge_files, intentClarificationState.originalInput);
+          }
+          
+          addMessage(resultMessage, 'ai');
+          
+          // 意図特定モードを終了
+          intentClarificationState.isActive = false;
+          userInput.placeholder = "質問してみましょう"; // プレースホルダーを元に戻す
         }
-        
-        addMessage(resultMessage, 'ai');
+      } catch (error) {
+        console.error('早期完了回答生成エラー:', error);
+        // エラーの場合は通常の検索にフォールバック
+        const fallbackResponse = await generateResponse(intentClarificationState.originalInput);
+        addMessage(fallbackResponse, 'ai');
         
         // 意図特定モードを終了
         intentClarificationState.isActive = false;
-        userInput.placeholder = "質問してみましょう"; // プレースホルダーを元に戻す
+        userInput.placeholder = "質問してみましょう";
       }
     }
 
