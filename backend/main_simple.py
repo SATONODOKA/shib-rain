@@ -112,13 +112,24 @@ class LLMService:
 
 # ナレッジ管理
 class KnowledgeManager:
-    def __init__(self, knowledge_base_path: str = "../KNOWLEDGE"):
-        self.knowledge_base_path = Path(knowledge_base_path)
+    def __init__(self, knowledge_base_path: str = None):
+        if knowledge_base_path is None:
+            # バックエンドディレクトリから実行されることを想定
+            self.knowledge_base_path = Path("../KNOWLEDGE")
+            # もし存在しない場合は、現在のディレクトリからの相対パスを試す
+            if not self.knowledge_base_path.exists():
+                self.knowledge_base_path = Path("KNOWLEDGE")
+        else:
+            self.knowledge_base_path = Path(knowledge_base_path)
+        
         self.knowledge_files = []
         self.scan_knowledge_files()
     
     def scan_knowledge_files(self) -> List[Dict]:
         """ナレッジファイルをスキャン"""
+        print(f"ナレッジベースパス: {self.knowledge_base_path}")
+        print(f"パスが存在するか: {self.knowledge_base_path.exists()}")
+        
         if not self.knowledge_base_path.exists():
             print(f"ナレッジベースパスが存在しません: {self.knowledge_base_path}")
             return []
@@ -127,7 +138,9 @@ class KnowledgeManager:
         for category_dir in self.knowledge_base_path.iterdir():
             if category_dir.is_dir():
                 category = category_dir.name
+                print(f"カテゴリディレクトリ: {category}")
                 for file_path in category_dir.glob("*.md"):
+                    print(f"ファイル発見: {file_path}")
                     file_info = self._parse_knowledge_file(file_path, category)
                     if file_info:
                         files.append(file_info)
@@ -458,12 +471,50 @@ class IntentClarificationService:
         """ナレッジを検索"""
         files = self.knowledge_manager.get_knowledge_files()
         results = []
+        print(f"検索クエリ: {query}")
         
         # クエリを単語に分割（日本語と英語の両方に対応）
         query_words = re.findall(r'[\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+', query.lower())
         
+        # 業界キーワードの定義
+        industry_keywords = {
+            "自動車": ["自動車", "車", "トヨタ", "ホンダ", "日産", "マツダ", "スバル", "三菱", "次世代リーダー"],
+            "食品": ["食品", "食", "明治", "味の素", "キッコーマン", "カルビー", "江崎グリコ"],
+            "化学": ["化学", "三菱化学", "住友化学", "旭化成", "東レ", "帝人"],
+            "建設": ["建設", "建築", "五洋建設", "大林組", "鹿島建設", "清水建設"],
+            "IT": ["IT", "情報技術", "ソフトウェア", "システム", "プログラミング", "エンジニア"],
+            "金融": ["金融", "銀行", "三菱UFJ", "みずほ", "三井住友", "投資"],
+            "小売": ["小売", "イオン", "セブン", "ファミマ", "ローソン", "コンビニ"],
+            "運輸": ["運輸", "JR", "鉄道", "航空", "ANA", "JAL", "日本郵船"],
+            "医療": ["医療", "病院", "製薬", "武田薬品", "アステラス", "看護"],
+            "教育": ["教育", "大学", "早稲田", "東京大学", "学校", "教員"],
+            "エネルギー": ["エネルギー", "電力", "東京電力", "関西電力", "ガス", "石油"]
+        }
+        
         for file in files:
             score = 0
+            
+            # 業界マッチング（高優先度）
+            query_industry = None
+            for industry, keywords in industry_keywords.items():
+                if any(keyword in query for keyword in keywords):
+                    query_industry = industry
+                    break
+            
+            if query_industry:
+                # タイトルに業界名が含まれている場合、大幅にスコアアップ
+                title_lower = file["title"].lower()
+                if query_industry in title_lower:
+                    score += 50  # 大幅にスコアアップ
+                elif any(keyword in title_lower for keyword in industry_keywords.get(query_industry, [])):
+                    score += 30
+                
+                # 説明文にも業界名が含まれている場合、さらにスコアアップ
+                desc_lower = file["description"].lower()
+                if query_industry in desc_lower:
+                    score += 25
+                elif any(keyword in desc_lower for keyword in industry_keywords.get(query_industry, [])):
+                    score += 15
             
             # タイトルでマッチング（完全一致と部分一致）
             title_lower = file["title"].lower()
@@ -499,6 +550,7 @@ class IntentClarificationService:
             if score > 0:
                 file["score"] = score
                 results.append(file)
+                print(f"ファイル: {file['title']}, スコア: {score}")
         
         # スコアでソート
         results.sort(key=lambda x: x["score"], reverse=True)
