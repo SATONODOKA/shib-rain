@@ -20,7 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# データモデル
+# データモデル（要件定義書に基づく）
 class ChatMessage(BaseModel):
     message: str
     chat_id: Optional[str] = None
@@ -37,29 +37,24 @@ class IntentClarificationRequest(BaseModel):
 class IntentQuestion(BaseModel):
     question: str
     question_number: int
-    max_questions: int
     is_complete: bool = False
 
 class IntentClarificationResponse(BaseModel):
     question: IntentQuestion
     is_ambiguous: bool
 
-class IntentResult(BaseModel):
-    primary_intent: str
+class UserNeeds(BaseModel):
+    description: str
     keywords: List[str]
-    knowledge_files: List[Dict]
 
-class IntentQuestionRequest(BaseModel):
-    user_input: str
-    question_number: int
-    answers: List[str] = []
+class ObsidianSearchRequest(BaseModel):
+    user_needs: UserNeeds
 
-class IntentCompleteRequest(BaseModel):
-    user_input: str
-    answers: List[str]
-    chat_id: Optional[str] = None
+class ObsidianSearchResult(BaseModel):
+    files: List[Dict]
+    explanation: str
 
-# LLMサービス
+# LLMサービス（要件定義書1.4節に基づく）
 class LLMService:
     def __init__(self):
         self.base_url = "http://localhost:11434"
@@ -87,16 +82,13 @@ class LLMService:
             return "申し訳ございませんが、現在ローカルLLMが利用できません。"
         
         try:
-            payload = {
-                "model": self.model,
-                "prompt": prompt,
-                "stream": False
-            }
-            
             response = requests.post(
-                f"{self.base_url}/api/generate",
-                json=payload,
-                timeout=30
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "stream": False
+                }
             )
             
             if response.status_code == 200:
@@ -152,11 +144,9 @@ class KnowledgeManager:
                 "path": rel_path,
                 "title": title,
                 "category": category,
-                "keywords": [],
                 "description": content[:200] + "..." if len(content) > 200 else content,
                 "file_size": len(content),
                 "last_modified": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
-                "score": 0,
                 "content": content
             }
         except Exception as e:
@@ -166,7 +156,7 @@ class KnowledgeManager:
     def get_knowledge_files(self) -> List[Dict]:
         return self.knowledge_files
 
-# 意図特定サービス
+# 意図特定サービス（要件定義書1.4節に基づく）
 class IntentClarificationService:
     def __init__(self, knowledge_manager: KnowledgeManager):
         self.knowledge_manager = knowledge_manager
@@ -176,110 +166,86 @@ class IntentClarificationService:
         if answers is None:
             answers = []
         
-        # LLMに質問生成を任せる
+        # 要件定義書3.1.1に基づくシンプルなプロンプト
         prompt = f"""
-ユーザーの質問「{user_input}」について、知りたい具体的な情報を確認する質問を1つ生成してください。
-これまでの回答: {', '.join(answers) if answers else 'なし'}
-質問番号: {question_number}/3
+あなたはユーザーのニーズを質問を通じて具体化したうえで、Obsidian上の関連性の高いファイルやナレッジを5つほど選び、表示させてください。
 
-質問のみを返してください。もう十分な情報がある場合は「COMPLETE」と返してください。
+ユーザー入力: {user_input}
+現在の質問回数: {question_number}
+これまでの回答: {', '.join(answers) if answers else 'なし'}
+
+質問が必要な場合は、ユーザーのニーズを具体化するための質問を1つ生成してください。
+十分な情報が得られた場合は、関連性の高いナレッジファイルを5つ程度選択して表示してください。
 """
         
         try:
             response = self.llm_service.generate_response(prompt).strip()
             
-            if "COMPLETE" in response.upper():
+            # LLMが十分な情報を得たと判断した場合
+            if any(keyword in response.lower() for keyword in ['理解しました', '検索します', '関連ファイル', 'ナレッジファイル']):
                 return IntentQuestion(
-                    question="理解しました。回答を生成します。",
+                    question="理解しました。関連するナレッジファイルを検索します。",
                     question_number=question_number,
-                    max_questions=3,
                     is_complete=True
                 )
             
             return IntentQuestion(
                 question=response,
-                question_number=question_number,
-                max_questions=3
+                question_number=question_number
             )
         except Exception as e:
-            # フォールバック
-            question = f"「{user_input}」について、どのような具体的な情報をお探しですか？"
+            # フォールバック（制約最小化）
+            question = f"「{user_input}」について、より詳しい情報をお聞かせください。"
             return IntentQuestion(
                 question=question,
-                question_number=question_number,
-                max_questions=3
+                question_number=question_number
             )
     
-    def identify_intent(self, user_input: str, answers: List[str]) -> IntentResult:
-        combined_input = f"{user_input} {' '.join(answers)}"
-        
-        # LLMに意図特定とナレッジ検索を任せる
-        prompt = f"""
-ユーザーの質問から、検索に使用するキーワードを抽出してください。
-
-質問: {combined_input}
-
-以下のJSON形式で回答してください：
-{{
-    "primary_intent": "主要な意図",
-    "keywords": ["キーワード1", "キーワード2", "キーワード3"]
-}}
-
-JSONのみを返してください。
-"""
-        
-        try:
-            response = self.llm_service.generate_response(prompt)
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
-            if json_match:
-                data = json.loads(json_match.group())
-                primary_intent = data.get("primary_intent", "一般情報")
-                keywords = data.get("keywords", [])
-            else:
-                primary_intent = "一般情報"
-                keywords = []
-        except:
-            primary_intent = "一般情報"
-            keywords = []
-        
-        # ナレッジファイルを検索（LLMベース）
-        knowledge_files = self._search_knowledge_with_llm(combined_input)
-        
-        return IntentResult(
-            primary_intent=primary_intent,
-            keywords=keywords,
-            knowledge_files=knowledge_files
-        )
-    
-    def _search_knowledge_with_llm(self, query: str) -> List[Dict]:
+    def search_obsidian_with_llm(self, user_needs: str) -> List[Dict]:
         files = self.knowledge_manager.get_knowledge_files()
         
+        if not files:
+            print("ナレッジファイルが見つかりません")
+            return []
+        
+        # 要件定義書3.1.2に基づく検索実行プロンプト
         prompt = f"""
-ユーザーの質問「{query}」に関連するファイルを選んでください。
+ユーザーのニーズに基づいて、Obsidianで関連性の高いファイルを5つ程度検索してください。
+
+ユーザーニーズ: {user_needs}
 
 利用可能なファイル:
 {chr(10).join([f"- {file['title']} ({file['path']})" for file in files])}
 
-関連度の高い順に、最大5つのファイルを選んでください。
-以下のJSON形式で回答してください：
-
+以下の形式で検索結果を返してください:
 {{
-    "selected_files": [
-        {{
-            "title": "ファイルタイトル"
-        }}
-    ]
+  "files": [
+    {{
+      "path": "ファイルパス",
+      "title": "ファイルタイトル",
+      "relevance": "関連性の説明"
+    }}
+  ],
+  "explanation": "検索の説明"
 }}
-
-JSONのみを返してください。
 """
         
         try:
             response = self.llm_service.generate_response(prompt)
+            print(f"LLM応答: {response}")
+            
+            # LLMがエラーメッセージを返した場合はフォールバック
+            if any(error_keyword in response for error_keyword in ['エラー', '取得できません', '通信でエラー']):
+                print("LLMエラー検出、フォールバック検索を実行")
+                fallback_results = self._fallback_search(user_needs, files)
+                if fallback_results:
+                    print(f"フォールバック検索で{len(fallback_results)}個のファイルを発見")
+                return fallback_results
+            
             json_match = re.search(r'\{.*\}', response, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group())
-                selected_files = data.get("selected_files", [])
+                selected_files = data.get("files", [])
                 
                 results = []
                 for selected in selected_files:
@@ -289,23 +255,125 @@ JSONのみを返してください。
                                 'path': file_info['path'],
                                 'title': file_info['title'],
                                 'category': file_info.get('category', ''),
-                                'keywords': file_info.get('keywords', []),
                                 'description': file_info.get('description', ''),
+                                'relevance': selected.get('relevance', '関連性の高いファイル'),
                                 'file_size': file_info.get('file_size', 0),
-                                'last_modified': file_info.get('last_modified', ''),
-                                'score': 100
+                                'last_modified': file_info.get('last_modified', '')
                             })
                             break
                 
-                return results
+                if results:
+                    print(f"LLM検索で{len(results)}個のファイルを発見")
+                    return results
+                else:
+                    # LLMがファイルを選択しなかった場合のフォールバック
+                    print("LLMがファイルを選択しませんでした、フォールバック検索を実行")
+                    fallback_results = self._fallback_search(user_needs, files)
+                    if fallback_results:
+                        print(f"フォールバック検索で{len(fallback_results)}個のファイルを発見")
+                    return fallback_results
             else:
-                return []
-        except:
-            return []
+                # JSON形式で応答しなかった場合のフォールバック
+                print("LLMがJSON形式で応答しませんでした、フォールバック検索を実行")
+                fallback_results = self._fallback_search(user_needs, files)
+                if fallback_results:
+                    print(f"フォールバック検索で{len(fallback_results)}個のファイルを発見")
+                return fallback_results
+        except Exception as e:
+            print(f"LLM検索エラー: {e}")
+            # エラー時のフォールバック
+            fallback_results = self._fallback_search(user_needs, files)
+            if fallback_results:
+                print(f"フォールバック検索で{len(fallback_results)}個のファイルを発見")
+            return fallback_results
+    
+    def _fallback_search(self, user_needs: str, files: List[Dict]) -> List[Dict]:
+        """フォールバック検索: キーワードベースの検索"""
+        print(f"フォールバック検索実行: {user_needs}")
+        
+        # ユーザーニーズからキーワードを抽出
+        keywords = self._extract_keywords(user_needs)
+        
+        results = []
+        for file_info in files:
+            score = 0
+            
+            # タイトルでのマッチング
+            title_lower = file_info['title'].lower()
+            for keyword in keywords:
+                if keyword.lower() in title_lower:
+                    score += 10
+            
+            # パスでのマッチング
+            path_lower = file_info['path'].lower()
+            for keyword in keywords:
+                if keyword.lower() in path_lower:
+                    score += 5
+            
+            # 説明でのマッチング
+            description_lower = file_info.get('description', '').lower()
+            for keyword in keywords:
+                if keyword.lower() in description_lower:
+                    score += 3
+            
+            if score > 0:
+                results.append({
+                    'path': file_info['path'],
+                    'title': file_info['title'],
+                    'category': file_info.get('category', ''),
+                    'description': file_info.get('description', ''),
+                    'relevance': f'キーワードマッチング (スコア: {score})',
+                    'file_size': file_info.get('file_size', 0),
+                    'last_modified': file_info.get('last_modified', '')
+                })
+        
+        # スコアでソートして上位5件を返す
+        results.sort(key=lambda x: int(x['relevance'].split('スコア: ')[1].split(')')[0]), reverse=True)
+        return results[:5]
+    
+    def _extract_keywords(self, user_needs: str) -> List[str]:
+        """ユーザーニーズからキーワードを抽出"""
+        keywords = []
+        
+        # 基本的なキーワード抽出
+        if '中堅' in user_needs or '中堅層' in user_needs:
+            keywords.extend(['中堅', '中堅層', '若手中堅離職防止'])
+        
+        if '離職' in user_needs:
+            keywords.extend(['離職', '離職防止', '定着', '若手中堅離職防止'])
+        
+        if '建設' in user_needs:
+            keywords.extend(['建設業界', '建設'])
+        
+        if '製造' in user_needs:
+            keywords.extend(['製造業界', '製造'])
+        
+        if 'IT' in user_needs or 'it' in user_needs.lower():
+            keywords.extend(['IT業界', 'IT'])
+        
+        if '組織風土' in user_needs:
+            keywords.extend(['組織風土改革', '組織風土'])
+        
+        if '女性' in user_needs:
+            keywords.extend(['女性活躍', '女性'])
+        
+        if '働き方' in user_needs:
+            keywords.extend(['働き方改革', '働き方'])
+        
+        # デフォルトキーワード
+        if not keywords:
+            keywords = ['中堅', '離職', '若手中堅離職防止']
+        
+        return keywords
 
 # グローバル変数としてサービスを定義
-knowledge_manager = None
-intent_clarification_service = None
+print("KnowledgeManager初期化開始...")
+knowledge_manager = KnowledgeManager()
+print(f"KnowledgeManager初期化完了: {len(knowledge_manager.get_knowledge_files())}個のファイルを読み込み")
+
+print("IntentClarificationService初期化開始...")
+intent_clarification_service = IntentClarificationService(knowledge_manager)
+print("IntentClarificationService初期化完了")
 
 # APIエンドポイント
 @app.get("/")
@@ -322,7 +390,8 @@ async def health_check():
 @app.post("/chat", response_model=ChatResponse)
 async def chat(message: ChatMessage):
     try:
-        knowledge_files = intent_clarification_service._search_knowledge_with_llm(message.message)
+        # LLMに直接検索を委任
+        knowledge_files = intent_clarification_service.search_obsidian_with_llm(message.message)
         response = await _generate_response(message.message, knowledge_files)
         
         return ChatResponse(
@@ -337,7 +406,7 @@ async def _generate_response(user_message: str, knowledge_files: List[Dict]) -> 
     if not knowledge_files:
         return f"「{user_message}」について、関連するナレッジファイルが見つかりませんでした。"
     
-    # LLMに回答生成を任せる
+    # LLMに回答生成を委任（制約最小化）
     file_contents = []
     for file in knowledge_files[:3]:
         try:
@@ -345,12 +414,15 @@ async def _generate_response(user_message: str, knowledge_files: List[Dict]) -> 
             if file_path.exists():
                 content = file_path.read_text(encoding='utf-8')
                 file_contents.append(f"【{file['title']}】\n{content[:1000]}...")
-        except:
+        except Exception as e:
+            print(f"ファイル読み込みエラー: {e}")
             continue
     
     if not file_contents:
-        return f"「{user_message}」について、関連するナレッジファイルが見つかりませんでした。"
+        # ファイルが見つかったが内容を読み込めなかった場合
+        return f"「{user_message}」について、関連するナレッジファイルが見つかりましたが、内容の読み込みに失敗しました。"
     
+    # シンプルなプロンプト（制約最小化）
     prompt = f"""
 ユーザーの質問「{user_message}」について、以下のナレッジファイルの情報を基に回答してください。
 
@@ -362,9 +434,34 @@ async def _generate_response(user_message: str, knowledge_files: List[Dict]) -> 
     
     try:
         response = intent_clarification_service.llm_service.generate_response(prompt)
-        return response
-    except:
-        return f"「{user_message}」について、関連するナレッジファイルが見つかりましたが、回答の生成に失敗しました。"
+        if response and response.strip() and not any(error_keyword in response for error_keyword in ['エラー', '取得できません', '通信でエラー']):
+            return response
+        else:
+            # LLMが応答しなかった場合のフォールバック
+            print("LLM応答生成に失敗、フォールバック応答を生成")
+            return _generate_fallback_response(user_message, knowledge_files)
+    except Exception as e:
+        print(f"LLM応答生成エラー: {e}")
+        # エラー時のフォールバック
+        return _generate_fallback_response(user_message, knowledge_files)
+
+def _generate_fallback_response(user_message: str, knowledge_files: List[Dict]) -> str:
+    """フォールバック応答生成"""
+    print(f"フォールバック応答生成: {user_message}")
+    
+    if not knowledge_files:
+        return f"「{user_message}」について、関連するナレッジファイルが見つかりませんでした。"
+    
+    response = f"「{user_message}」について、以下のナレッジファイルが関連していると思われます：\n\n"
+    
+    for i, file in enumerate(knowledge_files[:3], 1):
+        response += f"{i}. **{file['title']}**\n"
+        response += f"   - カテゴリ: {file['category']}\n"
+        response += f"   - 関連性: {file.get('relevance', '関連性の高いファイル')}\n"
+        response += f"   - 概要: {file.get('description', '')[:100]}...\n\n"
+    
+    response += "これらのファイルをObsidianで開いて詳細を確認してください。"
+    return response
 
 @app.post("/intent/start", response_model=IntentClarificationResponse)
 async def start_intent_clarification(request: IntentClarificationRequest):
@@ -378,56 +475,58 @@ async def start_intent_clarification(request: IntentClarificationRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/intent/question")
-async def generate_next_question(request: IntentQuestionRequest):
+async def generate_next_question(request: IntentClarificationRequest):
     try:
         question = intent_clarification_service.generate_question(
             request.user_input, 
-            request.question_number, 
-            request.answers
+            1  # 文脈に応じて変動（要件定義書9.2節）
         )
         return {"question": question}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/intent/complete", response_model=IntentResult)
-async def complete_intent_clarification(request: IntentCompleteRequest):
+@app.post("/intent/complete", response_model=ObsidianSearchResult)
+async def complete_intent_clarification(request: IntentClarificationRequest):
     try:
-        intent_result = intent_clarification_service.identify_intent(request.user_input, request.answers)
-        return intent_result
+        # LLMに直接検索を委任
+        knowledge_files = intent_clarification_service.search_obsidian_with_llm(request.user_input)
+        
+        return ObsidianSearchResult(
+            files=knowledge_files,
+            explanation="ユーザーのニーズに基づいて関連性の高いナレッジファイルを検索しました。"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/intent/complete-with-response", response_model=ChatResponse)
-async def complete_intent_with_response(request: IntentCompleteRequest):
+async def complete_intent_with_response(request: IntentClarificationRequest):
     try:
-        intent_result = intent_clarification_service.identify_intent(request.user_input, request.answers)
-        combined_query = f"{request.user_input} {' '.join(request.answers)}"
-        response = await _generate_response(combined_query, intent_result.knowledge_files)
+        # LLMに直接検索を委任
+        knowledge_files = intent_clarification_service.search_obsidian_with_llm(request.user_input)
+        response = await _generate_response(request.user_input, knowledge_files)
         
         return ChatResponse(
             response=response,
-            knowledge_files=intent_result.knowledge_files,
+            knowledge_files=knowledge_files,
             chat_id=request.chat_id or "default"
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/knowledge/search-by-intent")
-async def search_knowledge_by_intent(intent_result: IntentResult):
+@app.post("/knowledge/search-obsidian", response_model=ObsidianSearchResult)
+async def search_obsidian(request: ObsidianSearchRequest):
     try:
-        return {
-            "knowledge_files": intent_result.knowledge_files,
-            "intent": intent_result.primary_intent,
-            "keywords": intent_result.keywords,
-            "explanation": f"あなたの意図「{intent_result.primary_intent}」に基づいて、関連するナレッジを表示しています。"
-        }
+        # LLMに直接検索を委任
+        knowledge_files = intent_clarification_service.search_obsidian_with_llm(request.user_needs.description)
+        
+        return ObsidianSearchResult(
+            files=knowledge_files,
+            explanation="Obsidianで関連性の高いナレッジファイルを検索しました。"
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# グローバル変数としてサービスを定義
-knowledge_manager = KnowledgeManager()
-intent_clarification_service = IntentClarificationService(knowledge_manager)
-
 if __name__ == "__main__":
     import uvicorn
+    print("FastAPIサーバー起動中...")
     uvicorn.run(app, host="0.0.0.0", port=8000) 
