@@ -484,7 +484,7 @@ async def chat(message: ChatMessage):
         else:
             # 十分な情報がある場合は直接検索
             knowledge_files = intent_clarification_service.search_obsidian_with_llm(message.message)
-            response = await _generate_response(message.message, knowledge_files)
+            response = _generate_response(message.message, knowledge_files)
             
             return ChatResponse(
                 response=response,
@@ -510,72 +510,15 @@ async def health_check():
         "knowledge_files_count": len(knowledge_manager.get_knowledge_files())
     }
 
-async def _generate_response(user_message: str, knowledge_files: List[Dict]) -> str:
-    if not knowledge_files:
-        return f"「{user_message}」について、関連するナレッジファイルが見つかりませんでした。"
-    
-    # 既に読み込まれているファイル内容を使用（高速化）
-    file_contents = []
-    for file in knowledge_files[:3]:
-        try:
-            # KnowledgeManagerで既に読み込まれているcontentを使用
-            content = file.get('content', '')
-            if content:
-                file_contents.append(f"【{file['title']}】\n{content[:500]}...")
-            else:
-                # contentがない場合はdescriptionを使用
-                description = file.get('description', '')
-                if description:
-                    file_contents.append(f"【{file['title']}】\n{description[:200]}...")
-        except Exception as e:
-            print(f"ファイル内容取得エラー: {e}")
-            continue
-    
-    if not file_contents:
-        # ファイルが見つかったが内容を取得できなかった場合
-        return f"「{user_message}」について、関連するナレッジファイルが見つかりましたが、内容の取得に失敗しました。"
-    
-    # 簡潔で効率的な回答生成のためのプロンプト
-    prompt = f"""
-重要: あなたは日本語で回答するアシスタントです。英語や中国語は一切使用せず、必ず日本語のみで回答してください。
-
-ユーザーの質問「{user_message}」について、以下の情報を基に簡潔に回答してください。
-
-{chr(10).join(file_contents[:2])}
-
-必ず日本語のみで回答してください。英語や中国語の単語や表現は一切使用しないでください。
-"""
-    
-    try:
-        response = intent_clarification_service.llm_service.generate_response(prompt)
-        if response and response.strip():
-            return response
-        else:
-            # LLMが応答しなかった場合のフォールバック
-            print("LLM応答生成に失敗、フォールバック応答を生成")
-            return _generate_fallback_response(user_message, knowledge_files)
-    except Exception as e:
-        print(f"LLM応答生成エラー: {e}")
-        # エラー時のフォールバック
-        return _generate_fallback_response(user_message, knowledge_files)
-
-def _generate_fallback_response(user_message: str, knowledge_files: List[Dict]) -> str:
-    """フォールバック応答生成"""
-    print(f"フォールバック応答生成: {user_message}")
+def _generate_response(user_message: str, knowledge_files: List[Dict]) -> str:
+    """LLMを使って応答を生成"""
+    print(f"回答生成: 現在の質問: {user_message}")
     
     if not knowledge_files:
         return f"「{user_message}」について、関連するナレッジファイルが見つかりませんでした。"
     
-    response = f"「{user_message}」について、以下のナレッジファイルが関連していると思われます：\n\n"
-    
-    for i, file in enumerate(knowledge_files[:3], 1):
-        response += f"{i}. **{file['title']}**\n"
-        response += f"   - カテゴリ: {file['category']}\n"
-        response += f"   - 関連性: {file.get('relevance', '関連性の高いファイル')}\n"
-        response += f"   - 概要: {file.get('description', '')[:100]}...\n\n"
-    
-    response += "これらのファイルをObsidianで開いて詳細を確認してください。"
-    return response
+    # シンプルなメッセージのみ返す（LLMでの詳細回答生成を廃止）
+    return "下記のようなナレッジが見つかりました："
 
 @app.post("/intent/start", response_model=IntentClarificationResponse)
 async def start_intent_clarification(request: IntentClarificationRequest):
@@ -619,7 +562,7 @@ async def complete_intent_with_response(request: IntentClarificationRequest):
         knowledge_files = intent_clarification_service.search_obsidian_with_llm(request.user_input)
         
         # 動的・人間らしい回答生成
-        response = await _generate_response(request.user_input, knowledge_files)
+        response = _generate_response(request.user_input, knowledge_files)
         
         return ChatResponse(
             response=response,
