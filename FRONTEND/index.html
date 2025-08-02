@@ -488,6 +488,32 @@
     .intent-cancel:hover {
       background: rgba(255,255,255,0.3);
     }
+
+    /* 継続促進メッセージ */
+    .continuation-message {
+      display: flex;
+      align-items: center;
+      background: #e0f2fe;
+      border: 1px solid #c6e4ff;
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-top: 10px;
+      margin-bottom: 10px;
+      color: #1e40af;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .continuation-icon {
+      width: 24px;
+      height: 24px;
+      margin-right: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #3b82f6;
+      font-size: 18px;
+    }
   </style>
 </head>
 <body>
@@ -771,9 +797,36 @@
       try {
         console.log('generateResponse開始:', userMessage);
         
+        // 会話履歴を構築
+        const conversationHistory = [];
+        if (currentChatId && chatSessions) {
+          const currentSession = chatSessions.find(s => s.id === currentChatId);
+          if (currentSession && currentSession.messages) {
+            // 最新5件の会話履歴を取得
+            const recentMessages = currentSession.messages.slice(-5);
+            
+            for (const msg of recentMessages) {
+              if (msg.sender === 'user') {
+                conversationHistory.push({
+                  role: 'user',
+                  content: (msg.content || '').replace(/<[^>]*>/g, '').substring(0, 150)
+                });
+              } else if (msg.sender === 'assistant') {
+                conversationHistory.push({
+                  role: 'assistant',
+                  content: (msg.content || '').replace(/<[^>]*>/g, '').substring(0, 150)
+                });
+              }
+            }
+          }
+        }
+        
+        console.log('構築された会話履歴:', conversationHistory);
+        
         const apiResponse = await callAPI('/chat', {
           message: userMessage,
-          chat_id: currentChatId
+          chat_id: currentChatId,
+          conversation_history: conversationHistory
         });
         
         console.log('API応答受信:', apiResponse);
@@ -804,6 +857,11 @@
           if (apiResponse.knowledge_files && apiResponse.knowledge_files.length > 0) {
             console.log('ナレッジファイル数:', apiResponse.knowledge_files.length);
             response += '\n\n' + displayKnowledgeFiles(apiResponse.knowledge_files);
+            
+            // 継続促進メッセージを追加
+            if (apiResponse.continuation_message) {
+              response += '\n\n' + createContinuationMessage(apiResponse.continuation_message);
+            }
           }
           
           console.log('最終応答:', response);
@@ -821,7 +879,7 @@
       } catch (error) {
         console.error('応答生成エラー:', error);
         return {
-          text: 'エラーが発生しました。',
+          text: 'エラーが発生しました: ' + error.message,
           isClarification: false
         };
       }
@@ -856,6 +914,16 @@
         console.error('ナレッジファイルを開くエラー:', error);
         alert('ファイルを開けませんでした。');
       }
+    }
+
+    // 継続促進メッセージのHTML生成
+    function createContinuationMessage(message) {
+      return `
+        <div class="continuation-message">
+          <div class="continuation-icon">💬</div>
+          <div class="continuation-text">${message}</div>
+        </div>
+      `;
     }
 
     // ローカルストレージからチャット履歴を読み込み
