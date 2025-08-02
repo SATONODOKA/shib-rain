@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "KNOWLEDGE/能力開発テーマ/若手中堅離職防止_IT業界.md",
+                "file": "KNOWLEDGE/能力開発テーマ/エンゲージメント向上_IT業界.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "若手中堅離職防止_IT業界"
+              "title": "エンゲージメント向上_IT業界"
             }
           }
         ]
@@ -170,12 +170,14 @@
   },
   "active": "cc1f9562eb41a464",
   "lastOpenFiles": [
+    "KNOWLEDGE/能力開発テーマ/人材育成_IT業界.md",
+    "PROCESSING/完了/ANA_アポメモ_20240205_航空DX.md",
+    "KNOWLEDGE/能力開発テーマ/若手中堅離職防止_IT業界.md",
     "KNOWLEDGE/能力開発テーマ/ハラスメント_製造業界.md",
     "PROCESSING/完了/三菱電機_アポメモ_20241110_中堅層離職防止.md",
     "PROCESSING/tagged_三菱電機_アポメモ_20241110_中堅層離職防止.md",
     "INBOX/三菱電機_アポメモ_20241110_中堅層離職防止.md",
     "KNOWLEDGE/能力開発テーマ/コミュニケーション_製造業界.md",
-    "KNOWLEDGE/能力開発テーマ/人材育成_IT業界.md",
     "KNOWLEDGE/能力開発テーマ/人材育成_建設業界.md",
     "KNOWLEDGE/能力開発テーマ/人材育成_製造業界.md",
     "processed_files.json",
@@ -201,8 +203,6 @@
     "PROCESSING/完了/三菱UFJ銀行_アポメモ_20241025_デジタル変革.md",
     "PROCESSING/完了/NTT_アポメモ_20240228_5G活用.md",
     "PROCESSING/完了/JTB_アポメモ_20240120_観光DX.md",
-    "PROCESSING/完了/JR東日本_アポメモ_20240505_鉄道DX.md",
-    "PROCESSING/完了/ANA_アポメモ_20240205_航空DX.md",
     "tsconfig.json",
     "tailwind.config.js",
     "src/app/api/chat/route.ts"

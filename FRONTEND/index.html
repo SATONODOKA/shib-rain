@@ -249,6 +249,16 @@
       border-bottom-left-radius: 4px;
     }
 
+    .message.clarification {
+      border-left: 4px solid #3b82f6;
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    }
+
+    .message.clarification .message-content {
+      font-style: italic;
+      color: #1e40af;
+    }
+
     .message-content h3 {
       margin: 12px 0 6px 0;
       font-size: 16px;
@@ -638,30 +648,38 @@
       addMessage(message, 'user');
       userInput.value = '';
 
-      // LLMに直接委任（要件定義書1.4節に基づく）
+      // 応答生成（質問の掘り下げ対応）
       setTimeout(async () => {
+        console.log('setTimeout開始');
         const response = await generateResponse(message);
-        addMessage(response, 'ai');
+        console.log('generateResponse完了:', response);
+        addMessage(response.text, 'ai', response.isClarification);
+        console.log('addMessage完了');
       }, 1000);
     }
 
     // メッセージ追加
-    function addMessage(content, sender) {
+    function addMessage(content, sender, isClarification = false) {
       if (currentChatId) {
         const session = chatSessions.find(s => s.id === currentChatId);
         if (session) {
-          session.messages.push({ content, sender });
+          session.messages.push({ content, sender, isClarification });
           saveChatHistory();
         }
       }
       
-      addMessageToDisplay(content, sender);
+      addMessageToDisplay(content, sender, isClarification);
     }
 
     // メッセージを表示に追加
-    function addMessageToDisplay(content, sender) {
+    function addMessageToDisplay(content, sender, isClarification = false) {
       const messageDiv = document.createElement('div');
       messageDiv.className = `message ${sender}`;
+      
+      // 掘り下げ質問の場合は特別なスタイルを適用
+      if (isClarification) {
+        messageDiv.classList.add('clarification');
+      }
       
       const avatar = document.createElement('div');
       avatar.className = 'message-avatar';
@@ -723,6 +741,8 @@
     // API通信（要件定義書に基づく）
     async function callAPI(endpoint, data) {
       try {
+        console.log('API呼び出し開始:', endpoint, data);
+        
         const response = await fetch(`http://localhost:8000${endpoint}`, {
           method: 'POST',
           headers: {
@@ -731,51 +751,86 @@
           body: JSON.stringify(data)
         });
         
+        console.log('API応答ステータス:', response.status);
+        
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        return await response.json();
+        const jsonResponse = await response.json();
+        console.log('API応答JSON:', jsonResponse);
+        return jsonResponse;
       } catch (error) {
         console.error('API通信エラー:', error);
         return { error: '通信エラー', message: 'サーバーとの通信に失敗しました。' };
       }
     }
 
-    // 応答生成（LLMに直接委任）
+    // 応答生成（質問の掘り下げ対応）
     async function generateResponse(userMessage) {
       try {
+        console.log('generateResponse開始:', userMessage);
+        
         const apiResponse = await callAPI('/chat', {
           message: userMessage,
           chat_id: currentChatId
         });
         
+        console.log('API応答受信:', apiResponse);
+        
         if (apiResponse && apiResponse.error) {
-          return `エラー: ${apiResponse.message}`;
+          console.log('APIエラー:', apiResponse.error);
+          return {
+            text: `エラー: ${apiResponse.message}`,
+            isClarification: false
+          };
         }
         
         if (apiResponse && apiResponse.response) {
           let response = apiResponse.response;
+          console.log('レスポンス内容:', response);
+          
+          // 質問の掘り下げが必要な場合
+          if (apiResponse.needs_clarification) {
+            console.log('掘り下げ質問を返す');
+            // 掘り下げ質問の場合は特別なスタイルで表示
+            return {
+              text: response,
+              isClarification: true
+            };
+          }
           
           // ナレッジファイルがある場合は表示
           if (apiResponse.knowledge_files && apiResponse.knowledge_files.length > 0) {
+            console.log('ナレッジファイル数:', apiResponse.knowledge_files.length);
             response += '\n\n' + displayKnowledgeFiles(apiResponse.knowledge_files);
           }
           
-          return response;
+          console.log('最終応答:', response);
+          return {
+            text: response,
+            isClarification: false
+          };
         } else {
-          return '申し訳ございませんが、現在システムに接続できません。';
+          console.log('API応答が不正:', apiResponse);
+          return {
+            text: '申し訳ございませんが、現在システムに接続できません。',
+            isClarification: false
+          };
         }
       } catch (error) {
         console.error('応答生成エラー:', error);
-        return 'エラーが発生しました。';
+        return {
+          text: 'エラーが発生しました。',
+          isClarification: false
+        };
       }
     }
 
     // ナレッジファイル表示
     function displayKnowledgeFiles(files) {
       const filesHtml = files.map(file => `
-        <div class="knowledge-file" onclick="openKnowledgeFile('${file.path}')">
+        <div class="knowledge-file" onclick="openKnowledgeFile('${file.path.replace(/'/g, "\\'")}')">
           <div class="file-title">${file.title}</div>
           <div class="file-path">${file.path}</div>
           <div class="file-relevance">${file.relevance || '関連性の高いファイル'}</div>
@@ -792,8 +847,15 @@
 
     // ナレッジファイルを開く
     function openKnowledgeFile(filePath) {
-      const obsidianUrl = `obsidian://open?vault=Obsidian%20Vault&file=${encodeURIComponent(filePath)}`;
-      window.open(obsidianUrl, '_blank');
+      try {
+        // ファイルパスを正しくエンコード
+        const encodedPath = encodeURIComponent(filePath);
+        const obsidianUrl = `obsidian://open?vault=Obsidian%20Vault&file=${encodedPath}`;
+        window.open(obsidianUrl, '_blank');
+      } catch (error) {
+        console.error('ナレッジファイルを開くエラー:', error);
+        alert('ファイルを開けませんでした。');
+      }
     }
 
     // ローカルストレージからチャット履歴を読み込み

@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from pathlib import Path
@@ -29,6 +31,7 @@ class ChatResponse(BaseModel):
     response: str
     knowledge_files: List[Dict]
     chat_id: str
+    needs_clarification: bool = False
 
 class IntentClarificationRequest(BaseModel):
     user_input: str
@@ -87,7 +90,12 @@ class LLMService:
                 json={
                     "model": self.model,
                     "prompt": prompt,
-                    "stream": False
+                    "stream": False,
+                    "options": {
+                        "num_ctx": 2048,
+                        "num_thread": 4,
+                        "temperature": 0.7
+                    }
                 }
             )
             
@@ -162,19 +170,79 @@ class IntentClarificationService:
         self.knowledge_manager = knowledge_manager
         self.llm_service = LLMService()
     
+    def needs_clarification(self, user_input: str) -> bool:
+        """質問の掘り下げが必要かどうかを判断"""
+        # 十分具体的な質問の場合は掘り下げ不要
+        specific_keywords = ['エンゲージメント', '離職', '組織風土', '人材育成', 'コミュニケーション', 'ハラスメント', '女性活躍', 'デジタル化', '働き方改革']
+        
+        if any(keyword in user_input for keyword in specific_keywords):
+            return False
+        
+        prompt = f"""
+あなたは日本語で回答するアシスタントです。
+
+ユーザーの質問「{user_input}」について、掘り下げが必要かどうかを判断してください。
+
+掘り下げが必要な場合のみ「はい」と回答してください。
+それ以外は「いいえ」と回答してください。
+
+「はい」または「いいえ」のみで回答してください。
+"""
+        
+        try:
+            response = self.llm_service.generate_response(prompt).strip().lower()
+            # より厳密な判断：明確に「はい」と回答した場合のみ掘り下げ
+            return response in ['はい', 'yes', '必要', 'true', '1']
+        except Exception as e:
+            print(f"掘り下げ判断エラー: {e}")
+            # エラーの場合は安全のため掘り下げを提案
+            return True
+    
+    def generate_clarification_question(self, user_input: str) -> str:
+        """質問の掘り下げを行う自然な質問を生成"""
+        prompt = f"""
+重要: あなたは日本語で回答するアシスタントです。英語や中国語は一切使用せず、必ず日本語のみで回答してください。
+
+ユーザーの質問「{user_input}」について、より具体的な情報を得るための自然な質問を1つ生成してください。
+
+質問の特徴:
+- ユーザーの興味関心を動的に特定する
+- 人間らしい自然な会話を心がける
+- 固定パターンに縛られない
+- 最終的にはObsidianのナレッジファイルに導く
+
+必ず日本語のみで回答してください。英語や中国語の単語や表現は一切使用しないでください。
+"""
+        
+        try:
+            response = self.llm_service.generate_response(prompt).strip()
+            if response and len(response) > 10:
+                return response
+            else:
+                return f"「{user_input}」について、もう少し詳しく教えていただけますか？"
+        except Exception as e:
+            print(f"質問生成エラー: {e}")
+            return f"「{user_input}」について、もう少し詳しく教えていただけますか？"
+    
     def generate_question(self, user_input: str, question_number: int, answers: List[str] = None) -> IntentQuestion:
         if answers is None:
             answers = []
         
-        # 要件定義書3.1.1に基づくシンプルなプロンプト
+        # 動的・人間らしい対話のためのプロンプト
         prompt = f"""
-あなたはユーザーのニーズを質問を通じて具体化したうえで、Obsidian上の関連性の高いファイルやナレッジを5つほど選び、表示させてください。
+あなたは、ユーザーの興味関心を自然な対話を通じて理解し、Obsidianにあるナレッジやメモに導くアシスタントです。
 
 ユーザー入力: {user_input}
 現在の質問回数: {question_number}
 これまでの回答: {', '.join(answers) if answers else 'なし'}
 
-質問が必要な場合は、ユーザーのニーズを具体化するための質問を1つ生成してください。
+対話の特徴:
+- ユーザーの興味関心を動的に特定する
+- 人間らしい自然な会話を心がける
+- 固定パターンや強制的な質問回数に縛られない
+- 最終的にはObsidianのナレッジファイルに導く
+
+質問が必要な場合は、ユーザーの興味関心をより深く理解するための自然な質問を1つ生成してください。
 十分な情報が得られた場合は、関連性の高いナレッジファイルを5つ程度選択して表示してください。
 """
         
@@ -208,25 +276,21 @@ class IntentClarificationService:
             print("ナレッジファイルが見つかりません")
             return []
         
-        # 要件定義書3.1.2に基づく検索実行プロンプト
+        # メモリ最適化: ファイルリストを最初の50個に制限
+        limited_files = files[:50]
+        
+        # 効率的な検索のためのプロンプト
         prompt = f"""
-ユーザーのニーズに基づいて、Obsidianで関連性の高いファイルを5つ程度検索してください。
-
-ユーザーニーズ: {user_needs}
+ユーザーの質問「{user_needs}」に関連するファイルを5つ選んでください。
 
 利用可能なファイル:
-{chr(10).join([f"- {file['title']} ({file['path']})" for file in files])}
+{chr(10).join([f"- {file['title']}" for file in limited_files])}
 
-以下の形式で検索結果を返してください:
+以下の形式で返してください:
 {{
   "files": [
-    {{
-      "path": "ファイルパス",
-      "title": "ファイルタイトル",
-      "relevance": "関連性の説明"
-    }}
-  ],
-  "explanation": "検索の説明"
+    {{"title": "ファイルタイトル", "relevance": "関連性"}}
+  ]
 }}
 """
         
@@ -248,9 +312,15 @@ class IntentClarificationService:
                 selected_files = data.get("files", [])
                 
                 results = []
+                added_titles = set()  # 重複防止のためのセット
                 for selected in selected_files:
+                    # 既に追加されたファイルはスキップ
+                    if selected.get('title') in added_titles:
+                        continue
+                        
+                    # メインLLM検索: 全ファイルから詳細情報を取得
                     for file_info in files:
-                        if file_info['title'] == selected['title']:
+                        if file_info['title'] == selected.get('title'):
                             results.append({
                                 'path': file_info['path'],
                                 'title': file_info['title'],
@@ -260,6 +330,7 @@ class IntentClarificationService:
                                 'file_size': file_info.get('file_size', 0),
                                 'last_modified': file_info.get('last_modified', '')
                             })
+                            added_titles.add(file_info['title'])  # 追加済みとしてマーク
                             break
                 
                 if results:
@@ -288,83 +359,102 @@ class IntentClarificationService:
             return fallback_results
     
     def _fallback_search(self, user_needs: str, files: List[Dict]) -> List[Dict]:
-        """フォールバック検索: キーワードベースの検索"""
+        """フォールバック検索: LLMによる柔軟な検索"""
         print(f"フォールバック検索実行: {user_needs}")
         
-        # ユーザーニーズからキーワードを抽出
-        keywords = self._extract_keywords(user_needs)
+        # メモリ最適化: ファイルリストを最初の50個に制限
+        limited_files = files[:50]
         
-        results = []
-        for file_info in files:
-            score = 0
-            
-            # タイトルでのマッチング
-            title_lower = file_info['title'].lower()
-            for keyword in keywords:
-                if keyword.lower() in title_lower:
-                    score += 10
-            
-            # パスでのマッチング
-            path_lower = file_info['path'].lower()
-            for keyword in keywords:
-                if keyword.lower() in path_lower:
-                    score += 5
-            
-            # 説明でのマッチング
-            description_lower = file_info.get('description', '').lower()
-            for keyword in keywords:
-                if keyword.lower() in description_lower:
-                    score += 3
-            
-            if score > 0:
-                results.append({
-                    'path': file_info['path'],
-                    'title': file_info['title'],
-                    'category': file_info.get('category', ''),
-                    'description': file_info.get('description', ''),
-                    'relevance': f'キーワードマッチング (スコア: {score})',
-                    'file_size': file_info.get('file_size', 0),
-                    'last_modified': file_info.get('last_modified', '')
-                })
+        # 簡潔なフォールバック検索のプロンプト
+        prompt = f"""
+「{user_needs}」に関連するファイルを5つ選んでください。
+
+利用可能なファイル:
+{chr(10).join([f"- {file['title']}" for file in limited_files])}
+
+以下の形式で返してください:
+{{
+  "files": [
+    {{"title": "ファイルタイトル", "relevance": "関連性"}}
+  ]
+}}
+"""
         
-        # スコアでソートして上位5件を返す
-        results.sort(key=lambda x: int(x['relevance'].split('スコア: ')[1].split(')')[0]), reverse=True)
-        return results[:5]
+        try:
+            response = self.llm_service.generate_response(prompt)
+            print(f"フォールバックLLM応答: {response}")
+            
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group())
+                selected_files = data.get("files", [])
+                
+                results = []
+                added_titles = set()  # 重複防止のためのセット
+                for selected in selected_files:
+                    # 既に追加されたファイルはスキップ
+                    if selected.get('title') in added_titles:
+                        continue
+                        
+                    # フォールバック検索: 全ファイルから詳細情報を取得
+                    for file_info in files:
+                        if file_info['title'] == selected.get('title'):
+                            results.append({
+                                'path': file_info['path'],
+                                'title': file_info['title'],
+                                'category': file_info.get('category', ''),
+                                'description': file_info.get('description', ''),
+                                'relevance': selected.get('relevance', 'フォールバック検索による関連ファイル'),
+                                'file_size': file_info.get('file_size', 0),
+                                'last_modified': file_info.get('last_modified', '')
+                            })
+                            added_titles.add(file_info['title'])  # 追加済みとしてマーク
+                            break
+                
+                if results:
+                    print(f"フォールバック検索で{len(results)}個のファイルを発見")
+                    return results
+            
+            # LLMが応答しなかった場合の最終フォールバック
+            print("フォールバックLLMも応答せず、最終フォールバックを実行")
+            return self._final_fallback_search(user_needs, files)
+            
+        except Exception as e:
+            print(f"フォールバック検索エラー: {e}")
+            return self._final_fallback_search(user_needs, files)
     
-    def _extract_keywords(self, user_needs: str) -> List[str]:
-        """ユーザーニーズからキーワードを抽出"""
-        keywords = []
+    def _final_fallback_search(self, user_needs: str, files: List[Dict]) -> List[Dict]:
+        """最終フォールバック: 最もシンプルな検索"""
+        print(f"最終フォールバック検索実行: {user_needs}")
         
-        # 基本的なキーワード抽出
-        if '中堅' in user_needs or '中堅層' in user_needs:
-            keywords.extend(['中堅', '中堅層', '若手中堅離職防止'])
+        # 最もシンプルな検索 - ファイル名にユーザー入力の一部が含まれるものを返す
+        results = []
+        added_titles = set()  # 重複防止のためのセット
+        user_words = user_needs.split()
         
-        if '離職' in user_needs:
-            keywords.extend(['離職', '離職防止', '定着', '若手中堅離職防止'])
+        for file_info in files:
+            # 既に追加されたファイルはスキップ
+            if file_info['title'] in added_titles:
+                continue
+                
+            title_lower = file_info['title'].lower()
+            path_lower = file_info['path'].lower()
+            
+            for word in user_words:
+                if len(word) > 1 and (word.lower() in title_lower or word.lower() in path_lower):
+                    results.append({
+                        'path': file_info['path'],
+                        'title': file_info['title'],
+                        'category': file_info.get('category', ''),
+                        'description': file_info.get('description', ''),
+                        'relevance': f'最終フォールバック検索 (マッチ: {word})',
+                        'file_size': file_info.get('file_size', 0),
+                        'last_modified': file_info.get('last_modified', '')
+                    })
+                    added_titles.add(file_info['title'])  # 追加済みとしてマーク
+                    break
         
-        if '建設' in user_needs:
-            keywords.extend(['建設業界', '建設'])
-        
-        if '製造' in user_needs:
-            keywords.extend(['製造業界', '製造'])
-        
-        if 'IT' in user_needs or 'it' in user_needs.lower():
-            keywords.extend(['IT業界', 'IT'])
-        
-        if '組織風土' in user_needs:
-            keywords.extend(['組織風土改革', '組織風土'])
-        
-        if '女性' in user_needs:
-            keywords.extend(['女性活躍', '女性'])
-        
-        if '働き方' in user_needs:
-            keywords.extend(['働き方改革', '働き方'])
-        
-        # デフォルトキーワード
-        if not keywords:
-            keywords = ['中堅', '離職', '若手中堅離職防止']
-        
-        return keywords
+        return results[:5]
 
 # グローバル変数としてサービスを定義
 print("KnowledgeManager初期化開始...")
@@ -376,9 +466,42 @@ intent_clarification_service = IntentClarificationService(knowledge_manager)
 print("IntentClarificationService初期化完了")
 
 # APIエンドポイント
+@app.post("/chat", response_model=ChatResponse)
+async def chat(message: ChatMessage):
+    try:
+        # まず質問の掘り下げが必要かどうかを判断
+        clarification_needed = intent_clarification_service.needs_clarification(message.message)
+        
+        if clarification_needed:
+            # 質問の掘り下げが必要な場合
+            question = intent_clarification_service.generate_clarification_question(message.message)
+            return ChatResponse(
+                response=question,
+                knowledge_files=[],
+                chat_id=message.chat_id or "default",
+                needs_clarification=True
+            )
+        else:
+            # 十分な情報がある場合は直接検索
+            knowledge_files = intent_clarification_service.search_obsidian_with_llm(message.message)
+            response = await _generate_response(message.message, knowledge_files)
+            
+            return ChatResponse(
+                response=response,
+                knowledge_files=knowledge_files,
+                chat_id=message.chat_id or "default",
+                needs_clarification=False
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 静的ファイル提供設定
+app.mount("/static", StaticFiles(directory="../FRONTEND"), name="static")
+
 @app.get("/")
-async def root():
-    return {"message": "Knowledge Chat API - Simple Version"}
+async def read_index():
+    """フロントエンドのindex.htmlを提供"""
+    return FileResponse('../FRONTEND/index.html')
 
 @app.get("/health")
 async def health_check():
@@ -387,54 +510,45 @@ async def health_check():
         "knowledge_files_count": len(knowledge_manager.get_knowledge_files())
     }
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(message: ChatMessage):
-    try:
-        # LLMに直接検索を委任
-        knowledge_files = intent_clarification_service.search_obsidian_with_llm(message.message)
-        response = await _generate_response(message.message, knowledge_files)
-        
-        return ChatResponse(
-            response=response,
-            knowledge_files=knowledge_files,
-            chat_id=message.chat_id or "default"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 async def _generate_response(user_message: str, knowledge_files: List[Dict]) -> str:
     if not knowledge_files:
         return f"「{user_message}」について、関連するナレッジファイルが見つかりませんでした。"
     
-    # LLMに回答生成を委任（制約最小化）
+    # 既に読み込まれているファイル内容を使用（高速化）
     file_contents = []
     for file in knowledge_files[:3]:
         try:
-            file_path = Path("../KNOWLEDGE") / file['path']
-            if file_path.exists():
-                content = file_path.read_text(encoding='utf-8')
-                file_contents.append(f"【{file['title']}】\n{content[:1000]}...")
+            # KnowledgeManagerで既に読み込まれているcontentを使用
+            content = file.get('content', '')
+            if content:
+                file_contents.append(f"【{file['title']}】\n{content[:500]}...")
+            else:
+                # contentがない場合はdescriptionを使用
+                description = file.get('description', '')
+                if description:
+                    file_contents.append(f"【{file['title']}】\n{description[:200]}...")
         except Exception as e:
-            print(f"ファイル読み込みエラー: {e}")
+            print(f"ファイル内容取得エラー: {e}")
             continue
     
     if not file_contents:
-        # ファイルが見つかったが内容を読み込めなかった場合
-        return f"「{user_message}」について、関連するナレッジファイルが見つかりましたが、内容の読み込みに失敗しました。"
+        # ファイルが見つかったが内容を取得できなかった場合
+        return f"「{user_message}」について、関連するナレッジファイルが見つかりましたが、内容の取得に失敗しました。"
     
-    # シンプルなプロンプト（制約最小化）
+    # 簡潔で効率的な回答生成のためのプロンプト
     prompt = f"""
-ユーザーの質問「{user_message}」について、以下のナレッジファイルの情報を基に回答してください。
+重要: あなたは日本語で回答するアシスタントです。英語や中国語は一切使用せず、必ず日本語のみで回答してください。
 
-ナレッジファイルの内容:
-{chr(10).join(file_contents)}
+ユーザーの質問「{user_message}」について、以下の情報を基に簡潔に回答してください。
 
-自然で分かりやすい回答を生成してください。
+{chr(10).join(file_contents[:2])}
+
+必ず日本語のみで回答してください。英語や中国語の単語や表現は一切使用しないでください。
 """
     
     try:
         response = intent_clarification_service.llm_service.generate_response(prompt)
-        if response and response.strip() and not any(error_keyword in response for error_keyword in ['エラー', '取得できません', '通信でエラー']):
+        if response and response.strip():
             return response
         else:
             # LLMが応答しなかった場合のフォールバック
@@ -493,7 +607,7 @@ async def complete_intent_clarification(request: IntentClarificationRequest):
         
         return ObsidianSearchResult(
             files=knowledge_files,
-            explanation="ユーザーのニーズに基づいて関連性の高いナレッジファイルを検索しました。"
+            explanation="ユーザーの興味関心に基づいて関連性の高いナレッジファイルを検索しました。"
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -503,6 +617,8 @@ async def complete_intent_with_response(request: IntentClarificationRequest):
     try:
         # LLMに直接検索を委任
         knowledge_files = intent_clarification_service.search_obsidian_with_llm(request.user_input)
+        
+        # 動的・人間らしい回答生成
         response = await _generate_response(request.user_input, knowledge_files)
         
         return ChatResponse(
@@ -521,7 +637,7 @@ async def search_obsidian(request: ObsidianSearchRequest):
         
         return ObsidianSearchResult(
             files=knowledge_files,
-            explanation="Obsidianで関連性の高いナレッジファイルを検索しました。"
+            explanation="ユーザーの興味関心に基づいてObsidianで関連性の高いナレッジファイルを検索しました。"
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
